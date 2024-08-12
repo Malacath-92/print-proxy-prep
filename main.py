@@ -14,6 +14,11 @@ import fallback_image as fallback
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, A4, A3, legal
 
+import pdf
+from util import *
+from constants import *
+
+
 sg.theme("DarkTeal2")
 
 
@@ -44,7 +49,6 @@ def make_popup_print_fn(wnd):
 loading_window = popup("Loading...")
 loading_window.refresh()
 
-cwd = os.path.dirname(__file__)
 image_dir = os.path.join(cwd, "images")
 crop_dir = os.path.join(image_dir, "crop")
 print_json = os.path.join(cwd, "print.json")
@@ -56,16 +60,6 @@ for folder in [image_dir, crop_dir]:
 config = configparser.ConfigParser()
 config.read(os.path.join(cwd, "config.ini"))
 cfg = config["DEFAULT"]
-
-page_sizes = {
-    "Letter": letter,
-    "A4": A4,
-    "A3": A3,
-    "Legal": legal
-}
-
-card_size_with_bleed_inch = (2.72, 3.7)
-card_size_without_bleed_inch = (2.48, 3.46)
 
 
 def load_vibrance_cube():
@@ -80,50 +74,6 @@ def load_vibrance_cube():
 
 vibrance_cube = load_vibrance_cube()
 del load_vibrance_cube
-
-
-def list_files(folder):
-    return [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
-
-
-def mm_to_inch(mm):
-    return mm * 0.0393701
-
-
-def mm_to_point(mm):
-    return inch_to_point(mm_to_inch(mm))
-
-
-def inch_to_mm(inch):
-    return inch / 0.0393701
-
-
-def inch_to_point(inch):
-    return inch * 72
-
-
-def is_number_string(str):
-    return str.replace(".", "", 1).isdigit()
-
-
-def cap_bleed_edge_str(bleed_edge):
-    if is_number_string(bleed_edge):
-        bleed_edge_num = float(bleed_edge)
-        max_bleed_edge = inch_to_mm(0.12)
-        if bleed_edge_num > max_bleed_edge:
-            bleed_edge_num = min(bleed_edge_num, max_bleed_edge)
-            bleed_edge = "{:.2f}".format(bleed_edge_num)
-    return bleed_edge
-
-
-def cap_offset_str(offset):
-    if is_number_string(offset):
-        offset_num = float(offset)
-        max_offset = 10.0
-        if offset_num > max_offset:
-            offset_num = min(offset_num, max_offset)
-            offset = "{:.2f}".format(offset_num)
-    return offset
 
     
 def is_window_maximized(window):
@@ -165,117 +115,6 @@ def write_image(path, image):
     with open(path, "wb") as f:
         _, bytes = cv2.imencode(".png", image)
         bytes.tofile(f)
-
-
-# Draws black-white dashed cross at `x`, `y`
-def draw_cross(can, x, y, c=6, s=1):
-    dash = [s, s]
-    can.setLineWidth(s)
-
-    # First layer
-    can.setDash(dash)
-    can.setStrokeColorRGB(255, 255, 255)
-    can.line(x, y - c, x, y + c)
-    can.setStrokeColorRGB(0, 0, 0)
-    can.line(x - c, y, x + c, y)
-
-    # Second layer with phase offset
-    can.setDash(dash, s)
-    can.setStrokeColorRGB(0, 0, 0)
-    can.line(x, y - c, x, y + c)
-    can.setStrokeColorRGB(255, 255, 255)
-    can.line(x - c, y, x + c, y)
-
-
-def pdf_gen(p_dict, size, pdf_path, print_fn):
-    img_dict = p_dict["cards"]
-    has_backside = print_dict["backside_enabled"]
-    backside_offset = mm_to_point(float(p_dict["backside_offset"]))
-    bleed_edge = float(p_dict["bleed_edge"])
-    has_bleed_edge = bleed_edge > 0
-    if has_bleed_edge:
-        b = mm_to_inch(bleed_edge)
-        img_dir = os.path.join(crop_dir, str(bleed_edge).replace(".", "p"))
-    else:
-        b = 0
-        img_dir = crop_dir
-    (w, h) = card_size_without_bleed_inch
-    w, h = inch_to_point((w + 2 * b)), inch_to_point((h + 2 * b))
-    b = inch_to_point(b)
-    rotate = bool(p_dict["orient"] == "Landscape")
-    size = tuple(size[::-1]) if rotate else size
-    pw, ph = size
-    pages = canvas.Canvas(pdf_path, pagesize=size)
-    cols, rows = int(pw // w), int(ph // h)
-    rx, ry = round((pw - (w * cols)) / 2), round((ph - (h * rows)) / 2)
-    ry = ph - ry - h
-    images_per_page = cols * rows
-
-    images = []
-    for img in img_dict.keys():
-        images.extend([img] * img_dict[img])
-    images = [
-        images[i : i + images_per_page] for i in range(0, len(images), images_per_page)
-    ]
-
-    for p, page_images in enumerate(images):
-        render_fmt = "Rendering page {page}...\nImage number {img_idx} - {img_name}"
-
-        def get_ith_image_coords(i):
-            _, j = divmod(i, images_per_page)
-            y, x = divmod(j, cols)
-            return x, y
-
-        def draw_image(img, i, x, y, dx=0.0, dy=0.0):
-            print_fn(render_fmt.format(page=p+1, img_idx=i+1, img_name=img))
-            img_path = os.path.join(img_dir, img)
-            if os.path.exists(img_path):
-                pages.drawImage(
-                    img_path,
-                    x * w + rx + dx,
-                    ry - y * h + dy,
-                    w,
-                    h,
-                )
-
-        # Draw front-sides
-        for i, img in enumerate(page_images):
-            x, y = get_ith_image_coords(i)
-            draw_image(img, i, x, y)
-
-            # Draw lines per image
-            if has_bleed_edge:
-                draw_cross(pages, (x + 0) * w + b + rx, ry - (y + 0) * h + b)
-                draw_cross(pages, (x + 1) * w - b + rx, ry - (y + 0) * h + b)
-                draw_cross(pages, (x + 1) * w - b + rx, ry - (y - 1) * h - b)
-                draw_cross(pages, (x + 0) * w + b + rx, ry - (y - 1) * h - b)
-
-        # Draw lines for whole page
-        if not has_bleed_edge:
-            for cy in range(rows + 1):
-                for cx in range(cols + 1):
-                    draw_cross(pages, rx + w * cx, ry - h * (cy - 1))
-
-        # Next page
-        pages.showPage()
-
-        # Draw back-sides if requested
-        if has_backside:
-            render_fmt = "Rendering backside for page {page}...\nImage number {img_idx} - {img_name}"
-            for i, img in enumerate(page_images):
-                print_fn(render_fmt.format(page=p+1, img_idx=i+1, img_name=img))
-                backside = (
-                    print_dict["backsides"][img]
-                    if img in print_dict["backsides"]
-                    else print_dict["backside_default"]
-                )
-                x, y = get_ith_image_coords(i)
-                draw_image(backside, i, x, y, backside_offset, 0)
-
-            # Next page
-            pages.showPage()
-
-    return pages
 
 
 def need_run_cropper(folder, bleed_edge):
@@ -972,7 +811,7 @@ while True:
 
         render_window = popup("Rendering...")
         render_window.refresh()
-        pages = pdf_gen(print_dict, page_sizes[print_dict["pagesize"]], pdf_path, make_popup_print_fn(render_window))
+        pages = pdf.generate(print_dict, crop_dir, page_sizes[print_dict["pagesize"]], pdf_path, make_popup_print_fn(render_window))
         render_window.close()
 
         saving_window = popup("Saving...")
@@ -990,15 +829,16 @@ while True:
         except Exception as e:
             print(e)
 
-    if "SELECT" in event:
-        for card_name in print_dict["cards"].keys():
-            print_dict["cards"][card_name] = 1
-            window[f"NUM:{card_name}"].update("1")
-
     if "UNSELECT" in event:
         for card_name in print_dict["cards"].keys():
             print_dict["cards"][card_name] = 0
-            window[f"NUM:{card_name}"].update("0")
+            if not card_name.startswith("__"):
+                window[f"NUM:{card_name}"].update("0")
+    elif "SELECT" in event:
+        for card_name in print_dict["cards"].keys():
+            print_dict["cards"][card_name] = 1
+            if not card_name.startswith("__"):
+                window[f"NUM:{card_name}"].update("1")
 
     if event in ["DEFAULT_BACKSIDE"]:
         if path := easygui.fileopenbox(default="images/*"):
