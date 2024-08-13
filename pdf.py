@@ -28,7 +28,7 @@ def draw_cross(can, x, y, c=6, s=1):
 
 
 def generate(print_dict, crop_dir, size, pdf_path, print_fn):
-    img_dict = print_dict["cards"]
+    images_dict = print_dict["cards"]
     has_backside = print_dict["backside_enabled"]
     backside_offset = mm_to_point(float(print_dict["backside_offset"]))
     bleed_edge = float(print_dict["bleed_edge"])
@@ -52,8 +52,8 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     images_per_page = cols * rows
 
     images = []
-    for img in img_dict.keys():
-        images.extend([img] * img_dict[img])
+    for img in images_dict.keys():
+        images.extend([img] * images_dict[img])
     images = [
         images[i : i + images_per_page] for i in range(0, len(images), images_per_page)
     ]

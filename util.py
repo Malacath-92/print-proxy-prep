@@ -1,4 +1,13 @@
 import os
+import configparser
+
+
+from constants import cwd
+
+def load_config(path):
+    config_parser = configparser.ConfigParser()
+    config_parser.read(os.path.join(cwd, path))
+    return config_parser["DEFAULT"]
 
 
 def list_files(folder):
