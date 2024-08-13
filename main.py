@@ -60,20 +60,6 @@ config = configparser.ConfigParser()
 config.read(os.path.join(cwd, "config.ini"))
 cfg = config["DEFAULT"]
 
-
-def load_vibrance_cube():
-    with open(os.path.join(cwd, "vibrance.CUBE")) as f:
-        lut_raw = f.read().splitlines()[11:]
-    lsize = round(len(lut_raw) ** (1 / 3))
-    row2val = lambda row: tuple([float(val) for val in row.split(" ")])
-    lut_table = [row2val(row) for row in lut_raw]
-    lut = ImageFilter.Color3DLUT(lsize, lut_table)
-    return lut
-
-
-vibrance_cube = load_vibrance_cube()
-del load_vibrance_cube
-
     
 def is_window_maximized(window):
     if not sg.running_linux():
