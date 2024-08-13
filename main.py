@@ -490,7 +490,7 @@ def load_print_dict():
 
     # deselect images starting with __
     for img in list_files(crop_dir):
-        print_dict["cards"][img] = 0 if img.startswith("__") else 1
+        print_dict["cards"][img] = 0 if img.startswith("__") else print_dict["cards"][img]
     
     return print_dict
 print_dict = load_print_dict()
