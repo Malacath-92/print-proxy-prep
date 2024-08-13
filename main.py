@@ -15,12 +15,12 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, A4, A3, legal
 
 import pdf
+import image
 from util import *
 from constants import *
 
 
 sg.theme("DarkTeal2")
-
 
 def popup(middle_text):
     wnd = sg.Window(
@@ -53,9 +53,8 @@ image_dir = os.path.join(cwd, "images")
 crop_dir = os.path.join(image_dir, "crop")
 print_json = os.path.join(cwd, "print.json")
 img_cache = os.path.join(cwd, "img.cache")
-for folder in [image_dir, crop_dir]:
-    if not os.path.exists(folder):
-        os.mkdir(folder)
+
+image.init(image_dir, crop_dir)
 
 config = configparser.ConfigParser()
 config.read(os.path.join(cwd, "config.ini"))
@@ -101,168 +100,6 @@ def grey_out(main_window):
     the_grey.set_alpha(0.6)
     the_grey.refresh()
     return the_grey
-
-
-def read_image(path):
-    with open(path, "rb") as f:
-        bytes = bytearray(f.read())
-        numpyarray = numpy.asarray(bytes, dtype=numpy.uint8)
-        image = cv2.imdecode(numpyarray, cv2.IMREAD_UNCHANGED)
-        return image
-
-
-def write_image(path, image):
-    with open(path, "wb") as f:
-        _, bytes = cv2.imencode(".png", image)
-        bytes.tofile(f)
-
-
-def need_run_cropper(folder, bleed_edge):
-    has_bleed_edge = bleed_edge is not None and bleed_edge > 0
-
-    output_dir = crop_dir
-    if has_bleed_edge:
-        output_dir = os.path.join(output_dir, str(bleed_edge).replace(".", "p"))
-
-    if not os.path.exists(output_dir):
-        return True
-
-    for img_file in list_files(folder):
-        if os.path.splitext(img_file)[1] in [
-            ".gif",
-            ".jpg",
-            ".jpeg",
-            ".png",
-        ] and not os.path.exists(os.path.join(output_dir, img_file)):
-            return True
-
-    return False
-
-
-def cropper(folder, img_dict, bleed_edge, print_fn):
-    has_bleed_edge = bleed_edge is not None and bleed_edge > 0
-    if has_bleed_edge:
-        img_dict = cropper(folder, img_dict, None, print_fn)
-
-    i = 0
-    output_dir = crop_dir
-    if has_bleed_edge:
-        output_dir = os.path.join(output_dir, str(bleed_edge).replace(".", "p"))
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
-    for img_file in list_files(folder):
-        if os.path.splitext(img_file)[1] not in [
-            ".gif",
-            ".jpg",
-            ".jpeg",
-            ".png",
-        ] or os.path.exists(os.path.join(output_dir, img_file)):
-            continue
-        im = read_image(os.path.join(folder, img_file))
-        i += 1
-        (h, w, _) = im.shape
-        (bw, bh) = card_size_with_bleed_inch
-        c = round(0.12 * min(w / bw, h / bh))
-        dpi = c * (1 / 0.12)
-        if has_bleed_edge:
-            bleed_edge_inch = mm_to_inch(bleed_edge)
-            bleed_edge_pixel = dpi * bleed_edge_inch
-            c = round(0.12 * min(w / bw, h / bh) - bleed_edge_pixel)
-            print_fn(
-                f"Cropping images...\n{img_file} - DPI calculated: {dpi}, cropping {c} pixels around frame (adjusted for bleed edge)"
-            )
-        else:
-            print_fn(
-                f"Cropping images...\n{img_file} - DPI calculated: {dpi}, cropping {c} pixels around frame"
-            )
-        crop_im = im[c : h - c, c : w - c]
-        (h, w, _) = crop_im.shape
-        max_dpi = cfg.getint("Max.DPI")
-        if dpi > max_dpi:
-            new_size = (
-                int(round(w * cfg.getint("Max.DPI") / dpi)),
-                int(round(h * cfg.getint("Max.DPI") / dpi)),
-            )
-            print_fn(
-                f"Cropping images...\n{img_file} - Exceeds maximum DPI {max_dpi}, resizing to {new_size[0]}x{new_size[1]}"
-            )
-            crop_im = cv2.resize(crop_im, new_size, interpolation=cv2.INTER_CUBIC)
-            crop_im = numpy.array(
-                Image.fromarray(crop_im).filter(ImageFilter.UnsharpMask(1, 20, 8))
-            )
-        if cfg.getboolean("Vibrance.Bump"):
-            crop_im = numpy.array(Image.fromarray(crop_im).filter(vibrance_cube))
-        write_image(os.path.join(output_dir, img_file), crop_im)
-
-    if i > 0 and not has_bleed_edge:
-        return cache_previews(img_cache, output_dir, print_fn)
-    else:
-        return img_dict
-
-
-def to_bytes(file_or_bytes, resize=None):
-    """
-    Will convert into bytes and optionally resize an image that is a file or a base64 bytes object.
-    Turns into PNG format in the process so that can be displayed by tkinter
-    :param file_or_bytes: either a string filename or a bytes base64 image object
-    :param resize:  optional new size
-    :return: (bytes) a byte-string object
-    """
-    if isinstance(file_or_bytes, str):
-        img = read_image(file_or_bytes)
-    else:
-        try:
-            dataBytesIO = io.BytesIO(base64.b64decode(file_or_bytes))
-            buffer = dataBytesIO.getbuffer()
-            img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
-        except Exception as e:
-            dataBytesIO = io.BytesIO(file_or_bytes)
-            buffer = dataBytesIO.getbuffer()
-            img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
-
-    (cur_height, cur_width, _) = img.shape
-    if resize:
-        new_width, new_height = resize
-        scale = min(new_height / cur_height, new_width / cur_width)
-        img = cv2.resize(
-            img,
-            (int(cur_width * scale), int(cur_height * scale)),
-            interpolation=cv2.INTER_AREA,
-        )
-        cur_height, cur_width = new_height, new_width
-    _, buffer = cv2.imencode(".png", img)
-    bio = io.BytesIO(buffer)
-    del img
-    return bio.getvalue(), (cur_width, cur_height)
-
-
-def cache_previews(file, folder, print_fn, data={}):
-    for f in list_files(folder):
-        if f in data.keys() and 'size' in data[f]:
-            continue
-        print_fn(f"Caching previews...\n{f}")
-
-        fn = os.path.join(folder, f)
-        im = read_image(fn)
-        (h, w, _) = im.shape
-        del im
-        r = 248 / w
-        image_data, image_size = to_bytes(fn, (round(w * r), round(h * r)))
-        data[f] = {
-            "data": str(image_data),
-            "size": image_size,
-        }
-        preview_data, preview_size = to_bytes(
-            fn, (image_size[0] * 0.45, image_size[1] * 0.45)
-        )
-        data[f + "_preview"] = {
-            "data": str(preview_data),
-            "size": preview_size,
-        }
-
-    with open(file, "w") as fp:
-        json.dump(data, fp, ensure_ascii=False)
-    return data
 
 
 def img_frames_refresh(max_cols):
@@ -528,8 +365,8 @@ def window_setup(cols):
             reset_button(window["CROP"])
 
             bleed_edge_num = float(bleed_edge)
-            if bleed_edge != print_dict["bleed_edge"] and need_run_cropper(
-                image_dir, bleed_edge_num
+            if bleed_edge != print_dict["bleed_edge"] and image.need_run_cropper(
+                image_dir, crop_dir, bleed_edge_num
             ):
                 render_button = window["RENDER"]
                 render_button.set_tooltip("Bleed edge changed, re-run cropper first...")
@@ -603,9 +440,9 @@ def load_img_dict():
                 break
     if img_cache_needs_refresh:
         print_fn = make_popup_print_fn(loading_window) if loading_window is not None else print
-        img_dict = cache_previews(img_cache, crop_dir, print_fn, img_dict)
+        img_dict = image.cache_previews(img_cache, crop_dir, print_fn, img_dict)
     return img_dict
-img_dict = cropper(image_dir, load_img_dict(), None, make_popup_print_fn(loading_window))
+img_dict = image.cropper(image_dir, crop_dir, img_cache, load_img_dict(), None, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), make_popup_print_fn(loading_window))
 
 
 def load_print_dict():
@@ -659,8 +496,8 @@ def load_print_dict():
 print_dict = load_print_dict()
 
 bleed_edge = float(print_dict["bleed_edge"])
-if need_run_cropper(image_dir, bleed_edge):
-    cropper(image_dir, img_dict, bleed_edge, make_popup_print_fn(loading_window))
+if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
+    image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), make_popup_print_fn(loading_window))
 
 window = window_setup(print_dict["columns"])
 for k in window.key_dict.keys():
@@ -759,13 +596,13 @@ while True:
 
     if "CROP" in event:
         bleed_edge = float(print_dict["bleed_edge"])
-        if need_run_cropper(image_dir, bleed_edge):
+        if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
             window.disable()
             grey_window = grey_out(window)
 
             crop_window = popup("Rendering...")
             crop_window.refresh()
-            img_dict = cropper(image_dir, img_dict, bleed_edge, make_popup_print_fn(crop_window))
+            img_dict = image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
             crop_window.close()
 
             needs_rebuild = False
