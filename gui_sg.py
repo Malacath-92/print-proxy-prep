@@ -25,7 +25,7 @@ def is_window_maximized(window):
 
 
 def popup(middle_text):
-    wnd = sg.Window(
+    popup = sg.Window(
         middle_text,
         [
             [sg.Sizer(v_pixels=20)],
@@ -35,33 +35,33 @@ def popup(middle_text):
         no_titlebar=True,
         finalize=True,
     )
-    wnd.move_to_center()
-    return wnd
+    popup.move_to_center()
+    return popup
 
 
-def make_popup_print_fn(wnd):
+def make_popup_print_fn(popup):
     def popup_print_fn(text):
         print(text)
-        wnd["TEXT"].update(text)
-        wnd.refresh()
-        wnd.move_to_center()
-        wnd.refresh()
+        popup["TEXT"].update(text)
+        popup.refresh()
+        popup.move_to_center()
+        popup.refresh()
     return popup_print_fn
 
 
-def grey_out(main_window):
+def grey_out(window):
     the_grey = sg.Window(
         title="",
         layout=[[]],
         alpha_channel=0.0,
         titlebar_background_color="#888888",
         background_color="#888888",
-        size=main_window.size,
+        size=window.size,
         disable_close=True,
-        location=main_window.current_location(more_accurate=True),
+        location=window.current_location(more_accurate=True),
         finalize=True,
     )
-    if is_window_maximized(main_window):
+    if is_window_maximized(window):
         the_grey.maximize()
     the_grey.disable()
     the_grey.set_alpha(0.6)
@@ -273,6 +273,8 @@ def window_setup(image_dir, crop_dir, print_dict, img_dict):
             sg.Column(layout=column_layout, expand_y=True),
         ],
     ]
+    
+    window_size = print_dict["size"]
     window = sg.Window(
         "PDF Proxy Printer",
         layout,
@@ -281,10 +283,11 @@ def window_setup(image_dir, crop_dir, print_dict, img_dict):
         finalize=True,
         element_justification="center",
         enable_close_attempted_event=True,
-        size=print_dict["size"],
+        size=window_size,
     )
 
-    window.maximize()
+    if window_size[0] is None:
+        window.maximize()
     window.timer_start(100, repeating=False)
 
     img_draw_graphs(window, crop_dir, print_dict, img_dict)
@@ -391,10 +394,15 @@ def window_setup(image_dir, crop_dir, print_dict, img_dict):
             continue
         window["GPH:" + card_name].bind("<Leave>", f"-Leave")
 
+    for k in window.key_dict.keys():
+        if "CRD:" in str(k):
+            window[k].bind("<Button-1>", "-LEFT")
+            window[k].bind("<Button-3>", "-RIGHT")
+
     return window
 
 
-def event_loop(window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
+def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
     hover_backside = False
 
     while True:

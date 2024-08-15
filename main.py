@@ -7,8 +7,7 @@ from util import *
 from constants import *
 
 
-gui.init()
-
+app = gui.init()
 
 loading_window = gui.popup("Loading...")
 loading_window.refresh()
@@ -97,14 +96,11 @@ if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
     image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), gui.make_popup_print_fn(loading_window))
 
 window = gui.window_setup(image_dir, crop_dir, print_dict, img_dict)
-for k in window.key_dict.keys():
-    if "CRD:" in str(k):
-        window[k].bind("<Button-1>", "-LEFT")
-        window[k].bind("<Button-3>", "-RIGHT")
+
 loading_window.close()
 loading_window = None
 
-gui.event_loop(window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
+gui.event_loop(app, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
 
 with open(print_json, "w") as fp:
     json.dump(print_dict, fp)
