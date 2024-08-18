@@ -2,9 +2,13 @@ import os
 import json
 
 import image
-import gui_sg as gui
+import gui_qt
+import gui_sg
 from util import *
 from constants import *
+
+
+gui = gui_qt
 
 
 app = gui.init()
@@ -62,7 +66,7 @@ def load_print_dict():
     default_print_dict = {
         "cards": {},
         # program window settings
-        "size": (None, None),
+        "size": (None, None), # only used by the PySimpleGui implementation
         "columns": 5,
         # backside options
         "backside_enabled": False,
