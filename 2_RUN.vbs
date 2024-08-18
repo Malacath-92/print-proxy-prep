@@ -1,0 +1,1 @@
+CreateObject("Wscript.Shell").Run "venv\scripts\python main.py",0,True
