@@ -5,7 +5,8 @@ import json
 import subprocess
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QScrollArea
 
 import pdf
 import image
@@ -40,11 +41,18 @@ def grey_out(main_window):
     pass
 
 
-class MainWindow(QMainWindow):
-    def __init__(self, print_dict):
-        super().__init__()
+def img_widget_from_bytes(img_data, img_size):
+    img_pixmap = QPixmap()
+    img_pixmap.loadFromData(img_data, "PNG")
 
-        self.print_dict = print_dict
+    img_widget = QLabel()
+    img_widget.setPixmap(img_pixmap)
+    return img_widget
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
 
         self.setWindowTitle("PDF Proxy Printer")
 
@@ -66,8 +74,36 @@ class MainWindow(QMainWindow):
             self.restoreState(settings.value('state'))
 
 
+class CardGrid(QGridLayout):
+    def __init__(self, print_dict, img_dict):
+        super().__init__()
+
+        cols = print_dict["columns"]
+        for i, (card_name, number) in enumerate(print_dict["cards"].items()):
+            img_data = eval(img_dict[card_name]["data"])
+            img_size = img_dict[card_name]["size"]
+            img = img_widget_from_bytes(img_data, img_size)
+
+            x = i // cols
+            y = i % cols
+            self.addWidget(img, x, y)
+
+
 def window_setup(image_dir, crop_dir, print_dict, img_dict):
-    window = MainWindow(print_dict)
+    window = MainWindow()
+
+    grid = QWidget()
+    grid.setLayout(CardGrid(print_dict, img_dict))
+
+    scroll_area = QScrollArea()
+    scroll_area.setWidgetResizable(True)
+    scroll_area.setWidget(grid)
+
+    window_area = QWidget()
+    window_area.setLayout(QVBoxLayout())
+    window_area.layout().addWidget(scroll_area);
+
+    window.setCentralWidget(window_area)
     window.show()
     return window
 
