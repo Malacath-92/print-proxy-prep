@@ -70,7 +70,7 @@ def need_run_cropper(image_dir, crop_dir, bleed_edge):
 def cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, max_dpi, do_vibrance_bump, print_fn):
     has_bleed_edge = bleed_edge is not None and bleed_edge > 0
     if has_bleed_edge:
-        img_dict = cropper(image_dir, img_dict, None, print_fn)
+        img_dict = cropper(image_dir, crop_dir, img_cache, img_dict, None, max_dpi, do_vibrance_bump, print_fn)
 
     i = 0
     output_dir = crop_dir
