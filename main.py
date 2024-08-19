@@ -80,6 +80,7 @@ def load_print_dict():
         "bleed_edge": "0",
         "filename": "_printme",
     }
+
     # Initialize our values
     for key, value in default_print_dict.items():
         if key not in print_dict:
@@ -87,6 +88,11 @@ def load_print_dict():
 
     # Make sure the size is a tuple, not a list
     print_dict['size'] = tuple(print_dict['size'])
+    
+    # Initialize the image amount
+    for img in list_files(crop_dir):
+        if img not in print_dict["cards"].keys():
+            print_dict["cards"][img] = 1
 
     # deselect images starting with __
     for img in list_files(crop_dir):
