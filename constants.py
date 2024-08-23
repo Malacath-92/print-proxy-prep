@@ -13,3 +13,4 @@ page_sizes = {
 
 card_size_with_bleed_inch = (2.72, 3.7)
 card_size_without_bleed_inch = (2.48, 3.46)
+card_ratio = card_size_without_bleed_inch[0] / card_size_without_bleed_inch[1]
