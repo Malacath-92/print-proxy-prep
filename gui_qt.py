@@ -6,7 +6,7 @@ import json
 import subprocess
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator
+from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QPushButton, QLineEdit, QGridLayout, QVBoxLayout, QHBoxLayout, QScrollArea, QStyle, QCommonStyle, QSizePolicy
 
 import pdf
@@ -67,15 +67,31 @@ class MainWindow(QMainWindow):
 
 
 class CardImage(QLabel):
-    def __init__(self, img_data, _):
+    def __init__(self, img_data, img_size):
         super().__init__()
 
-        self.img_pixmap = QPixmap()
-        self.img_pixmap.loadFromData(img_data, "PNG")
+        raw_pixmap = QPixmap()
+        raw_pixmap.loadFromData(img_data, "PNG")
 
         card_size_minimum_width_pixels = 110
+        card_corner_radius_inch = 1 / 8
+        card_corner_radius_pixels = card_corner_radius_inch * img_size[0] / card_size_without_bleed_inch[0]
 
-        self.setPixmap(self.img_pixmap)
+        clipped_pixmap = QPixmap(img_size[0], img_size[1])
+        clipped_pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+
+        path = QPainterPath()
+        path.addRoundedRect(QtCore.QRectF(raw_pixmap.rect()), card_corner_radius_pixels, card_corner_radius_pixels)
+        
+        painter = QPainter(clipped_pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, raw_pixmap)
+        del painter
+
+        self.setPixmap(clipped_pixmap)
         self.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding)
         self.setScaledContents(True)
         self.setMinimumWidth(card_size_minimum_width_pixels)
