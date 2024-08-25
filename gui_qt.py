@@ -7,10 +7,11 @@ import subprocess
 
 import PyQt6.QtCore as QtCore
 from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QPushButton, QLineEdit, QGridLayout, QVBoxLayout, QHBoxLayout, QScrollArea, QStyle, QCommonStyle, QSizePolicy
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QPushButton, QLineEdit, QGridLayout, QVBoxLayout, QHBoxLayout, QScrollArea, QStyle, QCommonStyle, QSizePolicy, QGroupBox, QComboBox, QDialog
 
 import pdf
 import image
+import constants
 from util import *
 from constants import *
 import fallback_image as fallback
@@ -26,12 +27,24 @@ def is_window_maximized(window):
 
 
 def popup(middle_text):
-    class window_stub:
+    class PopupWindow(QDialog):
+        def __init__(self, text):
+            super().__init__()
+
+            text_widget = QLabel(text)
+            layout = QVBoxLayout()
+            layout.addWidget(text_widget)
+            self.setLayout(layout)
+            self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint)
+
         def refresh(self):
+            self.setVisible(True)
             pass
+        
         def close(self):
+            self.setVisible(False)
             pass
-    return window_stub()
+    return PopupWindow(middle_text)
 
 
 def make_popup_print_fn(popup): 
@@ -40,6 +53,42 @@ def make_popup_print_fn(popup):
 
 def grey_out(main_window):
     pass
+
+
+class WidgetWithLabel(QWidget):
+    def __init__(self, label_text, widget):
+        super().__init__()
+
+        label = QLabel(label_text + ':')
+        if '&' in label_text:
+            label.setBuddy(widget)
+        
+        layout = QHBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.setLayout(layout)
+
+        self._widget = widget
+
+
+class ComboBoxWithLabel(WidgetWithLabel):
+    def __init__(self, label_text, options, default_option = None):
+        combo = QComboBox()
+        for option in options:
+            combo.addItem(option)
+
+        if default_option is not None and default_option in options:
+            combo.setCurrentIndex(options.index(default_option))
+
+        super().__init__(label_text, combo)
+
+
+class LineEditWithLabel(WidgetWithLabel):
+    def __init__(self, label_text, default_text = None):
+        text = QLineEdit(default_text)
+        super().__init__(label_text, text)
 
 
 class MainWindow(QMainWindow):
@@ -116,10 +165,10 @@ class CardWidget(QWidget):
         style = QCommonStyle()
 
         left_arrow = QPushButton()
-        left_arrow.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowLeft))
+        left_arrow.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
 
         right_arrow = QPushButton()
-        right_arrow.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowRight))
+        right_arrow.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowUp))
 
         number_layout = QHBoxLayout()
         number_layout.addStretch()
@@ -192,26 +241,8 @@ class CardGrid(QWidget):
         super().__init__()
 
         grid_layout = QGridLayout()
-
-        i = 0
-        cols = print_dict["columns"]
-        for card_name, _ in print_dict["cards"].items():
-            if card_name.startswith("__"):
-                continue
-
-            x = i // cols
-            y = i % cols
-            grid_layout.addWidget(CardWidget(print_dict, img_dict, card_name), x, y)
-            i = i + 1
-
-        self._first_item = grid_layout.itemAt(0).widget()
-        self._cols = cols
-        self._rows = i // cols + 1
-        self._nested_resize = False
-
         self.setLayout(grid_layout)
-        self.setMinimumWidth(self.totalWidthFromItemWidth(self._first_item.minimumWidth()))
-        self.setMinimumHeight(self._first_item.heightForWidth(self._first_item.minimumWidth()))
+        self.refresh(print_dict, img_dict)
 
     def totalWidthFromItemWidth(self, item_width):
         margins = self.layout().contentsMargins()
@@ -234,6 +265,30 @@ class CardGrid(QWidget):
         height = self.heightForWidth(width)
         self.setFixedHeight(height)
 
+    def refresh(self, print_dict, img_dict):
+        grid_layout = self.layout()
+        for i in reversed(range(grid_layout.count())): 
+            grid_layout.removeWidget(grid_layout.itemAt(i).widget())
+
+        i = 0
+        cols = print_dict["columns"]
+        for card_name, _ in print_dict["cards"].items():
+            if card_name.startswith("__"):
+                continue
+
+            x = i // cols
+            y = i % cols
+            grid_layout.addWidget(CardWidget(print_dict, img_dict, card_name), x, y)
+            i = i + 1
+
+        self._first_item = grid_layout.itemAt(0).widget()
+        self._cols = cols
+        self._rows = math.ceil(i / cols)
+        self._nested_resize = False
+
+        self.setMinimumWidth(self.totalWidthFromItemWidth(self._first_item.minimumWidth()))
+        self.setMinimumHeight(self._first_item.heightForWidth(self._first_item.minimumWidth()))
+
 
 class CardScrollArea(QScrollArea):
     def __init__(self, card_grid):
@@ -247,13 +302,121 @@ class CardScrollArea(QScrollArea):
 
         self._card_grid = card_grid
 
+    def refresh(self, print_dict, img_dict):
+        self._card_grid.refresh(print_dict, img_dict)
+        self._card_grid.update()
+        self.window().update()
+        self.update()
 
-def window_setup(image_dir, crop_dir, print_dict, img_dict):
-    grid = CardGrid(print_dict, img_dict)
-    scroll_area = CardScrollArea(grid)
+
+class ActionsWidget(QGroupBox):
+    def __init__(self, card_scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache):
+        super().__init__()
+
+        self.setTitle("Actions")
+
+        cropper_button = QPushButton("Run Cropper")
+        render_button = QPushButton("Render Document")
+        save_button = QPushButton("Save Project")
+        load_button = QPushButton("Load Project")
+
+        buttons = [cropper_button, render_button, save_button, load_button]
+        minimum_width = max(map(lambda x: x.sizeHint().width(), buttons))
+        
+        layout = QGridLayout()
+        layout.setColumnMinimumWidth(0, minimum_width + 10)
+        layout.setColumnMinimumWidth(1, minimum_width + 10)
+        layout.addWidget(cropper_button, 0, 0)
+        layout.addWidget(render_button, 0, 1)
+        layout.addWidget(save_button, 1, 0)
+        layout.addWidget(load_button, 1, 1)
+
+        self.setLayout(layout)
+
+        def run_cropper():
+            bleed_edge = float(print_dict["bleed_edge"])
+            if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
+
+                self.window().setEnabled(False)
+                crop_window = popup("Cropping images...")
+                crop_window.refresh()
+                image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, CFG.getint("Max.DPI"), CFG.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
+                crop_window.close()
+                crop_window = None
+
+                needs_rebuild = True
+                for img in list_files(crop_dir):
+                    if img not in print_dict["cards"].keys():
+                        print(f"{img} found and added to list.")
+                        print_dict["cards"][img] = 1
+                        needs_rebuild = True
+
+                deleted_images = []
+                for img in print_dict["cards"].keys():
+                    if img not in img_dict.keys():
+                        print(f"{img} not found and removed from list.")
+                        deleted_images.append(img)
+                        needs_rebuild = True
+                for img in deleted_images:
+                    del print_dict["cards"][img]
+
+                if needs_rebuild:
+                    card_scroll_area.refresh(print_dict, img_dict)
+                
+                self.window().setEnabled(True)
+
+        cropper_button.pressed.connect(run_cropper)
+
+        self._cropper_button = cropper_button
+        self._img_dict = img_dict
+
+
+class PrintOptionsWidget(QGroupBox):
+    def __init__(self, print_dict):
+        super().__init__()
+
+        self.setTitle("Print Options")
+
+        print_output = LineEditWithLabel("PDF &Filename", print_dict["filename"])
+        paper_sizes = ComboBoxWithLabel("Paper &Size", print_dict["page_sizes"], print_dict["pagesize"])
+        orientation = ComboBoxWithLabel("&Orientation", ["Landscape", "Portrait"], print_dict["orient"])
+
+        layout = QVBoxLayout()
+        layout.addWidget(print_output)
+        layout.addWidget(paper_sizes)
+        layout.addWidget(orientation)
+
+        self.setLayout(layout)
+
+
+class OptionsWidget(QWidget):
+    def __init__(self, card_scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache):
+        super().__init__()
+
+        actions_widget = ActionsWidget(card_scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache)
+        print_options = PrintOptionsWidget(print_dict)
+
+        layout = QVBoxLayout()
+        layout.addWidget(actions_widget)
+        layout.addWidget(print_options)
+        layout.addStretch()
+
+        self.setLayout(layout)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+
+
+def window_setup(image_dir, crop_dir, print_dict, img_dict, img_cache):
+    card_grid = CardGrid(print_dict, img_dict)
+    scroll_area = CardScrollArea(card_grid)
+
+    options = OptionsWidget(scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache)
+
+    window_layout = QHBoxLayout()
+    window_layout.addWidget(scroll_area)
+    window_layout.addWidget(options)
+    
     window_area = QWidget()
-    window_area.setLayout(QVBoxLayout())
-    window_area.layout().addWidget(scroll_area)
+    window_area.setLayout(window_layout)
 
     window = MainWindow()
     window.setCentralWidget(window_area)
