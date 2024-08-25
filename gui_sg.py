@@ -8,6 +8,7 @@ import easygui
 
 import pdf
 import image
+import constants
 from util import *
 from constants import *
 import fallback_image as fallback
@@ -201,7 +202,7 @@ def img_draw_graphs(window, crop_dir, print_dict, img_dict):
         img_draw_single_graph(window, print_dict, img_dict, card_name, has_backside)
 
 
-def window_setup(image_dir, crop_dir, print_dict, img_dict):
+def window_setup(image_dir, crop_dir, print_dict, img_dict, _):
     column_layout = [
         [
             sg.Button(button_text=" Config ", size=(10, 1), key="CONFIG"),
@@ -488,7 +489,7 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
                 json.dump(print_dict, fp)
 
         if event in ["CROP", "RENDER"]:
-            cfg = load_config("config.ini")
+            constants.CFG = load_config("config.ini")
 
         if "CROP" in event:
             bleed_edge = float(print_dict["bleed_edge"])
@@ -498,7 +499,7 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
 
                 crop_window = popup("Rendering...")
                 crop_window.refresh()
-                img_dict = image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
+                image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, constants.CFG.getint("Max.DPI"), constants.CFG.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
                 crop_window.close()
 
                 needs_rebuild = False

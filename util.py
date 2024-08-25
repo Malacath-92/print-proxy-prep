@@ -1,17 +1,14 @@
 import os
-import configparser
 
 
 from constants import cwd
 
-def load_config(path):
-    config_parser = configparser.ConfigParser()
-    config_parser.read(os.path.join(cwd, path))
-    return config_parser["DEFAULT"]
 
-
-def list_files(folder):
-    return [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
+def list_files(folder, extensions = None):
+    files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
+    if extensions is not None and isinstance(extensions, list):
+        files = [f for f in files if os.path.splitext(f)[1] in extensions]
+    return files
 
 
 def mm_to_inch(mm):

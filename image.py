@@ -11,7 +11,12 @@ from constants import *
 
 
 vibrance_cube = None
-
+valid_image_extensions = [
+    ".gif",
+    ".jpg",
+    ".jpeg",
+    ".png",
+]
 
 def init(image_dir, crop_dir):
     for folder in [image_dir, crop_dir]:
@@ -55,39 +60,31 @@ def need_run_cropper(image_dir, crop_dir, bleed_edge):
     if not os.path.exists(output_dir):
         return True
 
-    for img_file in list_files(image_dir):
-        if os.path.splitext(img_file)[1] in [
-            ".gif",
-            ".jpg",
-            ".jpeg",
-            ".png",
-        ] and not os.path.exists(os.path.join(output_dir, img_file)):
-            return True
-
-    return False
+    input_files = list_files(image_dir, valid_image_extensions)
+    output_files = list_files(output_dir, valid_image_extensions)
+    return sorted(input_files) != sorted(output_files)
 
 
 def cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, max_dpi, do_vibrance_bump, print_fn):
     has_bleed_edge = bleed_edge is not None and bleed_edge > 0
     if has_bleed_edge:
-        img_dict = cropper(image_dir, crop_dir, img_cache, img_dict, None, max_dpi, do_vibrance_bump, print_fn)
+        cropper(image_dir, crop_dir, img_cache, img_dict, None, max_dpi, do_vibrance_bump, print_fn)
 
-    i = 0
     output_dir = crop_dir
     if has_bleed_edge:
         output_dir = os.path.join(output_dir, str(bleed_edge).replace(".", "p"))
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    for img_file in list_files(image_dir):
-        if os.path.splitext(img_file)[1] not in [
-            ".gif",
-            ".jpg",
-            ".jpeg",
-            ".png",
-        ] or os.path.exists(os.path.join(output_dir, img_file)):
+
+    needs_refresh = False   
+    
+    input_files = list_files(image_dir, valid_image_extensions)
+    for img_file in input_files:
+        if os.path.exists(os.path.join(output_dir, img_file)):
             continue
+        needs_refresh = True
+
         im = read_image(os.path.join(image_dir, img_file))
-        i += 1
         (h, w, _) = im.shape
         (bw, bh) = card_size_with_bleed_inch
         c = round(0.12 * min(w / bw, h / bh))
@@ -121,21 +118,20 @@ def cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, max_dpi, do_vi
             crop_im = numpy.array(Image.fromarray(crop_im).filter(vibrance_cube))
         write_image(os.path.join(output_dir, img_file), crop_im)
 
-    if i > 0 and not has_bleed_edge:
-        return cache_previews(img_cache, output_dir, print_fn)
-    else:
-        return img_dict
+    output_files = list_files(output_dir, valid_image_extensions)
+    for img_file in output_files:
+        if not os.path.exists(os.path.join(image_dir, img_file)):
+            needs_refresh = True
+            os.remove(os.path.join(output_dir, img_file))
+
+    if needs_refresh and not has_bleed_edge:
+        cache_previews(img_cache, output_dir, print_fn, img_dict)
 
 
 def to_bytes(file_or_bytes, resize=None):
-    """
-    Will convert into bytes and optionally resize an image that is a file or a base64 bytes object.
-    Turns into PNG format in the process so that can be displayed by tkinter
-    :param file_or_bytes: either a string filename or a bytes base64 image object
-    :param resize:  optional new size
-    :return: (bytes) a byte-string object
-    """
-    if isinstance(file_or_bytes, str):
+    if isinstance(file_or_bytes, numpy.ndarray):
+        img = file_or_bytes
+    elif isinstance(file_or_bytes, str):
         img = read_image(file_or_bytes)
     else:
         try:
@@ -163,7 +159,15 @@ def to_bytes(file_or_bytes, resize=None):
     return bio.getvalue(), (cur_width, cur_height)
 
 
-def cache_previews(file, folder, print_fn, data={}):
+def cache_previews(file, folder, print_fn, data):
+    deleted_cards = []
+    for img in data.keys():
+        fn = os.path.join(folder, img)
+        if not os.path.exists(fn):
+            deleted_cards.append(img)
+    for img in deleted_cards:
+        del data[img]
+
     for f in list_files(folder):
         if f in data.keys() and 'size' in data[f]:
             continue
@@ -172,15 +176,14 @@ def cache_previews(file, folder, print_fn, data={}):
         fn = os.path.join(folder, f)
         im = read_image(fn)
         (h, w, _) = im.shape
-        del im
         r = 248 / w
-        image_data, image_size = to_bytes(fn, (round(w * r), round(h * r)))
+        image_data, image_size = to_bytes(im, (round(w * r), round(h * r)))
         data[f] = {
             "data": str(image_data),
             "size": image_size,
         }
         preview_data, preview_size = to_bytes(
-            fn, (image_size[0] * 0.45, image_size[1] * 0.45)
+            im, (image_size[0] * 0.45, image_size[1] * 0.45)
         )
         data[f + "_preview"] = {
             "data": str(preview_data),
@@ -189,4 +192,3 @@ def cache_previews(file, folder, print_fn, data={}):
 
     with open(file, "w") as fp:
         json.dump(data, fp, ensure_ascii=False)
-    return data

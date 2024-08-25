@@ -23,8 +23,6 @@ img_cache = os.path.join(cwd, "img.cache")
 
 image.init(image_dir, crop_dir)
 
-cfg = load_config("config.ini")
-
 
 def load_img_dict():
     crop_list = list_files(crop_dir)
@@ -40,9 +38,10 @@ def load_img_dict():
                 break
     if img_cache_needs_refresh:
         print_fn = gui.make_popup_print_fn(loading_window) if loading_window is not None else print
-        img_dict = image.cache_previews(img_cache, crop_dir, print_fn, img_dict)
+        image.cache_previews(img_cache, crop_dir, print_fn, img_dict)
     return img_dict
-img_dict = image.cropper(image_dir, crop_dir, img_cache, load_img_dict(), None, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), gui.make_popup_print_fn(loading_window))
+img_dict = load_img_dict()
+image.cropper(image_dir, crop_dir, img_cache, img_dict, None, CFG.getint("Max.DPI"), CFG.getboolean("Vibrance.Bump"), gui.make_popup_print_fn(loading_window))
 
 
 def load_print_dict():
@@ -62,7 +61,7 @@ def load_print_dict():
             bleed_edge = "0"
         print_dict["bleed_edge"] = bleed_edge
 
-    default_page_size = cfg.get("Paper.Size", "Letter")
+    default_page_size = CFG.get("Paper.Size", "Letter")
     default_print_dict = {
         "cards": {},
         # program window settings
@@ -103,9 +102,9 @@ print_dict = load_print_dict()
 
 bleed_edge = float(print_dict["bleed_edge"])
 if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
-    image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, cfg.getint("Max.DPI"), cfg.getboolean("Vibrance.Bump"), gui.make_popup_print_fn(loading_window))
+    image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, CFG.getint("Max.DPI"), CFG.getboolean("Vibrance.Bump"), gui.make_popup_print_fn(loading_window))
 
-window = gui.window_setup(image_dir, crop_dir, print_dict, img_dict)
+window = gui.window_setup(image_dir, crop_dir, print_dict, img_dict, img_cache)
 
 loading_window.close()
 loading_window = None
