@@ -35,20 +35,32 @@ def popup(middle_text):
             layout = QVBoxLayout()
             layout.addWidget(text_widget)
             self.setLayout(layout)
-            self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint)
+            self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint)
+            self.setModal(True)
 
-        def refresh(self):
-            self.setVisible(True)
-            pass
-        
-        def close(self):
-            self.setVisible(False)
-            pass
+            self._text = text_widget
+
+        def show_during_work(self, work):
+            class WorkThread(QtCore.QThread):
+                def run(self):
+                    work()
+            work_thread = WorkThread()
+
+            self.open()
+            work_thread.finished.connect(lambda: self.close())
+            work_thread.start()
+            self.exec()
+
     return PopupWindow(middle_text)
 
 
-def make_popup_print_fn(popup): 
-    return print
+def make_popup_print_fn(popup):
+    def popup_print_fn(text):
+        print(text)
+        popup.adjustSize()
+        popup._text.setText(text)
+        popup.adjustSize()
+    return popup_print_fn
 
 
 def grey_out(main_window):
@@ -335,37 +347,38 @@ class ActionsWidget(QGroupBox):
             bleed_edge = float(print_dict["bleed_edge"])
             if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
 
+                self._rebuild_after_cropper = False
+
+                def cropper_work():
+                    image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, CFG.getint("Max.DPI"), CFG.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
+
+                    for img in list_files(crop_dir):
+                        if img not in print_dict["cards"].keys():
+                            print(f"{img} found and added to list.")
+                            print_dict["cards"][img] = 1
+                            self._rebuild_after_cropper = True
+
+                    deleted_images = []
+                    for img in print_dict["cards"].keys():
+                        if img not in img_dict.keys():
+                            print(f"{img} not found and removed from list.")
+                            deleted_images.append(img)
+                            self._rebuild_after_cropper = True
+                    for img in deleted_images:
+                        del print_dict["cards"][img]
+                
                 self.window().setEnabled(False)
                 crop_window = popup("Cropping images...")
-                crop_window.refresh()
-                image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, CFG.getint("Max.DPI"), CFG.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
-                crop_window.close()
-                crop_window = None
-
-                needs_rebuild = True
-                for img in list_files(crop_dir):
-                    if img not in print_dict["cards"].keys():
-                        print(f"{img} found and added to list.")
-                        print_dict["cards"][img] = 1
-                        needs_rebuild = True
-
-                deleted_images = []
-                for img in print_dict["cards"].keys():
-                    if img not in img_dict.keys():
-                        print(f"{img} not found and removed from list.")
-                        deleted_images.append(img)
-                        needs_rebuild = True
-                for img in deleted_images:
-                    del print_dict["cards"][img]
-
-                if needs_rebuild:
+                crop_window.show_during_work(cropper_work)
+                del crop_window
+                if self._rebuild_after_cropper:
                     card_scroll_area.refresh(print_dict, img_dict)
-                
                 self.window().setEnabled(True)
 
         cropper_button.pressed.connect(run_cropper)
 
         self._cropper_button = cropper_button
+        self._rebuild_after_cropper = False
         self._img_dict = img_dict
 
 

@@ -26,18 +26,25 @@ def is_window_maximized(window):
 
 
 def popup(middle_text):
-    popup = sg.Window(
-        middle_text,
-        [
-            [sg.Sizer(v_pixels=20)],
-            [sg.Sizer(h_pixels=20), sg.Text(middle_text, key="TEXT", justification="center"), sg.Sizer(h_pixels=20)],
-            [sg.Sizer(v_pixels=20)],
-        ],
-        no_titlebar=True,
-        finalize=True,
-    )
-    popup.move_to_center()
-    return popup
+    class PopUp(sg.Window):
+        def __init__(self):
+            super().__init__(
+                middle_text,
+                [
+                    [sg.Sizer(v_pixels=20)],
+                    [sg.Sizer(h_pixels=20), sg.Text(middle_text, key="TEXT", justification="center"), sg.Sizer(h_pixels=20)],
+                    [sg.Sizer(v_pixels=20)],
+                ],
+                no_titlebar=True,
+                finalize=True,
+            )
+            self.move_to_center()
+        
+        def show_during_work(self, work):
+            self.refresh()
+            work()
+            self.close()
+    return PopUp()
 
 
 def make_popup_print_fn(popup):
