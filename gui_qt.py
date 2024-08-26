@@ -6,7 +6,7 @@ import json
 import subprocess
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath
+from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QPalette
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QPushButton, QLineEdit, QGridLayout, QVBoxLayout, QHBoxLayout, QScrollArea, QStyle, QCommonStyle, QSizePolicy, QGroupBox, QComboBox, QDialog
 
 import pdf
@@ -36,7 +36,11 @@ def popup(middle_text):
             layout.addWidget(text_widget)
             self.setLayout(layout)
             self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.WindowStaysOnTopHint)
-            self.setModal(True)
+
+            palette = self.palette()
+            palette.setColor(self.backgroundRole(), 0x111111)
+            self.setPalette(palette)
+            self.setAutoFillBackground(True)
 
             self._text = text_widget
 
