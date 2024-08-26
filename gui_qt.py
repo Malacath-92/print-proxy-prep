@@ -273,7 +273,7 @@ class CardGrid(QWidget):
         i = 0
         cols = print_dict["columns"]
         for card_name, _ in print_dict["cards"].items():
-            if card_name.startswith("__"):
+            if card_name.startswith("__") or card_name not in img_dict:
                 continue
 
             x = i // cols
@@ -304,9 +304,7 @@ class CardScrollArea(QScrollArea):
 
     def refresh(self, print_dict, img_dict):
         self._card_grid.refresh(print_dict, img_dict)
-        self._card_grid.update()
-        self.window().update()
-        self.update()
+        self._card_grid.adjustSize() # forces recomputing size
 
 
 class ActionsWidget(QGroupBox):

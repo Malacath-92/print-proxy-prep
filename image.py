@@ -155,40 +155,65 @@ def to_bytes(file_or_bytes, resize=None):
         cur_height, cur_width = new_height, new_width
     _, buffer = cv2.imencode(".png", img)
     bio = io.BytesIO(buffer)
-    del img
     return bio.getvalue(), (cur_width, cur_height)
+
+
+def thumbnail_name(img):
+    return img + "_thumb"
+
+
+def is_thumbnail_name(img):
+    return img.endswith('_thumb')
 
 
 def cache_previews(file, folder, print_fn, data):
     deleted_cards = []
     for img in data.keys():
+        if is_thumbnail_name(img):
+            continue
         fn = os.path.join(folder, img)
         if not os.path.exists(fn):
             deleted_cards.append(img)
     for img in deleted_cards:
         del data[img]
 
-    for f in list_files(folder):
-        if f in data.keys() and 'size' in data[f]:
-            continue
-        print_fn(f"Caching previews...\n{f}")
+        img_thumbnail = thumbnail_name(img)
+        if img_thumbnail in data:
+            del data[img_thumbnail]
 
-        fn = os.path.join(folder, f)
-        im = read_image(fn)
-        (h, w, _) = im.shape
-        r = 248 / w
-        image_data, image_size = to_bytes(im, (round(w * r), round(h * r)))
-        data[f] = {
-            "data": str(image_data),
-            "size": image_size,
-        }
-        preview_data, preview_size = to_bytes(
-            im, (image_size[0] * 0.45, image_size[1] * 0.45)
-        )
-        data[f + "_preview"] = {
-            "data": str(preview_data),
-            "size": preview_size,
-        }
+    for f in list_files(folder):
+        f_thumbnail = thumbnail_name(f)
+
+        has_img = f in data
+        has_size = has_img and 'size' in data[f]
+        has_preview = has_img and f in data.keys()
+        has_thumbnail = has_img and f_thumbnail in data.keys()
+        need_img = not has_size or not has_preview or not has_thumbnail
+        img = read_image(os.path.join(folder, f)) if need_img else None
+
+        (h, w, _) = img.shape if img is not None else (1, 1, 1)
+        scale = 248 / w
+        preview_size = (round(w * scale), round(h * scale))
+
+        if not has_size or not has_preview:
+            print_fn(f"Caching preview for image {f}...\n")
+
+            image_data, image_size = to_bytes(img, preview_size)
+            data[f] = {
+                "data": str(image_data),
+                "size": image_size,
+            }
+
+        if not has_thumbnail:
+            print_fn(f"Caching thumbnail for image {f}...\n")
+
+            preview_data, preview_size = to_bytes(
+                img, (preview_size[0] * 0.45, preview_size[1] * 0.45)
+            )
+            data[f_thumbnail] = {
+                "data": str(preview_data),
+                "size": preview_size,
+            }
 
     with open(file, "w") as fp:
         json.dump(data, fp, ensure_ascii=False)
