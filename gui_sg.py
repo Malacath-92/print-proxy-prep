@@ -209,7 +209,7 @@ def img_draw_graphs(window, crop_dir, print_dict, img_dict):
         img_draw_single_graph(window, print_dict, img_dict, card_name, has_backside)
 
 
-def window_setup(image_dir, crop_dir, print_dict, img_dict, _):
+def window_setup(image_dir, crop_dir, _, print_dict, img_dict, _):
     column_layout = [
         [
             sg.Button(button_text=" Config ", size=(10, 1), key="CONFIG"),

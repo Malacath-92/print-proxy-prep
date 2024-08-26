@@ -112,7 +112,7 @@ loading_window = gui.popup("Loading...")
 loading_window.show_during_work(init)
 del loading_window
 
-window = gui.window_setup(image_dir, crop_dir, print_dict, img_dict, img_cache)
+window = gui.window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
 
 gui.event_loop(app, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
 

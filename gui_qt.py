@@ -324,7 +324,7 @@ class CardScrollArea(QScrollArea):
 
 
 class ActionsWidget(QGroupBox):
-    def __init__(self, card_scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache):
+    def __init__(self, card_scroll_area, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
         super().__init__()
 
         self.setTitle("Actions")
@@ -343,7 +343,9 @@ class ActionsWidget(QGroupBox):
         layout.addWidget(cropper_button, 0, 0)
         layout.addWidget(render_button, 0, 1)
         layout.addWidget(save_button, 1, 0)
-        layout.addWidget(load_button, 1, 1)
+
+        # TODO: Missing this feature
+        # layout.addWidget(load_button, 1, 1)
 
         self.setLayout(layout)
 
@@ -379,7 +381,12 @@ class ActionsWidget(QGroupBox):
                     card_scroll_area.refresh(print_dict, img_dict)
                 self.window().setEnabled(True)
 
+        def save_project():
+            with open(print_json, "w") as fp:
+                json.dump(print_dict, fp)
+
         cropper_button.pressed.connect(run_cropper)
+        save_button.pressed.connect(save_project)
 
         self._cropper_button = cropper_button
         self._rebuild_after_cropper = False
@@ -401,14 +408,27 @@ class PrintOptionsWidget(QGroupBox):
         layout.addWidget(paper_sizes)
         layout.addWidget(orientation)
 
+        def change_output(t):
+            print_dict["filename"] = t
+
+        def change_papersize(t):
+            print_dict["pagesize"] = t
+
+        def change_orientation(t):
+            print_dict["orient"] = t
+
+        print_output._widget.textChanged.connect(change_output)
+        paper_sizes._widget.currentTextChanged.connect(change_papersize)
+        orientation._widget.currentTextChanged.connect(change_orientation)
+
         self.setLayout(layout)
 
 
 class OptionsWidget(QWidget):
-    def __init__(self, card_scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache):
+    def __init__(self, card_scroll_area, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
         super().__init__()
 
-        actions_widget = ActionsWidget(card_scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache)
+        actions_widget = ActionsWidget(card_scroll_area, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
         print_options = PrintOptionsWidget(print_dict)
 
         layout = QVBoxLayout()
@@ -420,11 +440,11 @@ class OptionsWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
 
-def window_setup(image_dir, crop_dir, print_dict, img_dict, img_cache):
+def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(card_grid)
 
-    options = OptionsWidget(scroll_area, image_dir, crop_dir, print_dict, img_dict, img_cache)
+    options = OptionsWidget(scroll_area, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
 
     window_layout = QHBoxLayout()
     window_layout.addWidget(scroll_area)
