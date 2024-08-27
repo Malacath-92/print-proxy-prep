@@ -6,8 +6,8 @@ import json
 import subprocess
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QPalette
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QPushButton, QLineEdit, QGridLayout, QVBoxLayout, QHBoxLayout, QScrollArea, QStyle, QCommonStyle, QSizePolicy, QGroupBox, QComboBox, QDialog
+from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QPushButton, QLineEdit, QGridLayout, QVBoxLayout, QHBoxLayout, QScrollArea, QStyle, QCommonStyle, QSizePolicy, QGroupBox, QComboBox, QDialog, QDoubleSpinBox, QFrame, QToolTip
 
 import pdf
 import image
@@ -380,13 +380,15 @@ class ActionsWidget(QGroupBox):
                 if self._rebuild_after_cropper:
                     card_scroll_area.refresh(print_dict, img_dict)
                 self.window().setEnabled(True)
+            else:
+                QToolTip.showText(cropper_button.mapToGlobal(QtCore.QPoint()), "All images are already cropped")
 
         def save_project():
             with open(print_json, "w") as fp:
                 json.dump(print_dict, fp)
 
-        cropper_button.pressed.connect(run_cropper)
-        save_button.pressed.connect(save_project)
+        cropper_button.released.connect(run_cropper)
+        save_button.released.connect(save_project)
 
         self._cropper_button = cropper_button
         self._rebuild_after_cropper = False
@@ -408,6 +410,8 @@ class PrintOptionsWidget(QGroupBox):
         layout.addWidget(paper_sizes)
         layout.addWidget(orientation)
 
+        self.setLayout(layout)
+
         def change_output(t):
             print_dict["filename"] = t
 
@@ -421,7 +425,33 @@ class PrintOptionsWidget(QGroupBox):
         paper_sizes._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
 
+
+class CardOptionsWidget(QGroupBox):
+    def __init__(self, print_dict):
+        super().__init__()
+
+        self.setTitle("Card Options")
+
+        bleed_edge_spin = QDoubleSpinBox()
+        bleed_edge_spin.setDecimals(2)
+        bleed_edge_spin.setRange(0, inch_to_mm(0.12))
+        bleed_edge_spin.setSingleStep(0.1)
+        bleed_edge = WidgetWithLabel("&Bleed Edge", bleed_edge_spin)
+        
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setFrameShadow(QFrame.Shadow.Sunken)
+
+        layout = QVBoxLayout()
+        layout.addWidget(bleed_edge)
+        layout.addWidget(divider)
+
         self.setLayout(layout)
+
+        def change_bleed_edge(t):
+            print_dict["bleed_edge"] = t
+
+        bleed_edge_spin.textChanged.connect(change_bleed_edge)
 
 
 class OptionsWidget(QWidget):
@@ -430,10 +460,12 @@ class OptionsWidget(QWidget):
 
         actions_widget = ActionsWidget(card_scroll_area, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache)
         print_options = PrintOptionsWidget(print_dict)
+        card_options = CardOptionsWidget(print_dict)
 
         layout = QVBoxLayout()
         layout.addWidget(actions_widget)
         layout.addWidget(print_options)
+        layout.addWidget(card_options)
         layout.addStretch()
 
         self.setLayout(layout)
