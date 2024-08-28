@@ -69,7 +69,7 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
             return x, y
 
         def draw_image(img, i, x, y, dx=0.0, dy=0.0):
-            print_fn(render_fmt.format(page=p+1, img_idx=i+1, img_name=img))
+            print_fn(render_fmt.format(page=p + 1, img_idx=i + 1, img_name=img))
             img_path = os.path.join(img_dir, img)
             if os.path.exists(img_path):
                 pages.drawImage(
@@ -105,7 +105,7 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
         if has_backside:
             render_fmt = "Rendering backside for page {page}...\nImage number {img_idx} - {img_name}"
             for i, img in enumerate(page_images):
-                print_fn(render_fmt.format(page=p+1, img_idx=i+1, img_name=img))
+                print_fn(render_fmt.format(page=p + 1, img_idx=i + 1, img_name=img))
                 backside = (
                     print_dict["backsides"][img]
                     if img in print_dict["backsides"]

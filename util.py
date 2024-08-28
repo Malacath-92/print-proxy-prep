@@ -4,7 +4,7 @@ import os
 from constants import cwd
 
 
-def list_files(folder, extensions = None):
+def list_files(folder, extensions=None):
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
     if extensions is not None and isinstance(extensions, list):
         files = [f for f in files if os.path.splitext(f)[1] in extensions]

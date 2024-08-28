@@ -20,9 +20,9 @@ def init():
 
 def is_window_maximized(window):
     if not sg.running_linux():
-        return window.TKroot.state() == 'zoomed'
+        return window.TKroot.state() == "zoomed"
     else:
-        return '-fullscreen' in window.TKroot.attributes()
+        return "-fullscreen" in window.TKroot.attributes()
 
 
 def popup(middle_text):
@@ -32,18 +32,23 @@ def popup(middle_text):
                 middle_text,
                 [
                     [sg.Sizer(v_pixels=20)],
-                    [sg.Sizer(h_pixels=20), sg.Text(middle_text, key="TEXT", justification="center"), sg.Sizer(h_pixels=20)],
+                    [
+                        sg.Sizer(h_pixels=20),
+                        sg.Text(middle_text, key="TEXT", justification="center"),
+                        sg.Sizer(h_pixels=20),
+                    ],
                     [sg.Sizer(v_pixels=20)],
                 ],
                 no_titlebar=True,
                 finalize=True,
             )
             self.move_to_center()
-        
+
         def show_during_work(self, work):
             self.refresh()
             work()
             self.close()
+
     return PopUp()
 
 
@@ -54,6 +59,7 @@ def make_popup_print_fn(popup):
         popup.refresh()
         popup.move_to_center()
         popup.refresh()
+
     return popup_print_fn
 
 
@@ -139,9 +145,7 @@ def img_frames_refresh(crop_dir, print_dict, img_dict):
                 vertical_alignment="center",
             ),
         ]
-    new_frames = [
-        frame_list[i : i + cols] for i in range(0, len(frame_list), cols)
-    ]
+    new_frames = [frame_list[i : i + cols] for i in range(0, len(frame_list), cols)]
     if len(new_frames) == 0:
         return sg.Push()
     return sg.Column(
@@ -281,7 +285,7 @@ def window_setup(image_dir, crop_dir, _, print_dict, img_dict, __):
             sg.Column(layout=column_layout, expand_y=True),
         ],
     ]
-    
+
     window_size = print_dict["size"]
     window = sg.Window(
         "PDF Proxy Printer",
@@ -410,7 +414,9 @@ def window_setup(image_dir, crop_dir, _, print_dict, img_dict, __):
     return window
 
 
-def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
+def event_loop(
+    _, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
+):
     hover_backside = False
 
     while True:
@@ -461,7 +467,9 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
                     print_dict["backsides"][name] = path
 
                     has_backside = print_dict["backside_enabled"]
-                    img_draw_single_graph(window, print_dict, img_dict, name, has_backside)
+                    img_draw_single_graph(
+                        window, print_dict, img_dict, name, has_backside
+                    )
 
         if event[:4] in ("ADD:", "SUB:"):
             name, e = get_card_name_from_event(event)
@@ -506,7 +514,16 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
 
                 crop_window = popup("Rendering...")
                 crop_window.refresh()
-                image.cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, constants.CFG.getint("Max.DPI"), constants.CFG.getboolean("Vibrance.Bump"), make_popup_print_fn(crop_window))
+                image.cropper(
+                    image_dir,
+                    crop_dir,
+                    img_cache,
+                    img_dict,
+                    bleed_edge,
+                    constants.CFG.getint("Max.DPI"),
+                    constants.CFG.getboolean("Vibrance.Bump"),
+                    make_popup_print_fn(crop_window),
+                )
                 crop_window.close()
 
                 needs_rebuild = False
@@ -546,13 +563,19 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
                     else "_printme.pdf"
                 ),
             )
-            
+
             window.disable()
             grey_window = grey_out(window)
 
             render_window = popup("Rendering...")
             render_window.refresh()
-            pages = pdf.generate(print_dict, crop_dir, page_sizes[print_dict["pagesize"]], pdf_path, make_popup_print_fn(render_window))
+            pages = pdf.generate(
+                print_dict,
+                crop_dir,
+                page_sizes[print_dict["pagesize"]],
+                pdf_path,
+                make_popup_print_fn(render_window),
+            )
             render_window.close()
 
             saving_window = popup("Saving...")
@@ -564,7 +587,7 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
             window.enable()
             window.bring_to_front()
             window.refresh()
-            
+
             try:
                 subprocess.Popen([pdf_path], shell=True)
             except Exception as e:
@@ -592,6 +615,6 @@ def event_loop(_, window, image_dir, crop_dir, print_json, print_dict, img_dict,
             print_dict["size"] = (None, None)
         else:
             print_dict["size"] = window.size
-        
+
         if event == sg.EVENT_TIMER:
             window.set_alpha(1)

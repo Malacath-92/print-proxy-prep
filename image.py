@@ -18,6 +18,7 @@ valid_image_extensions = [
     ".png",
 ]
 
+
 def init(image_dir, crop_dir):
     for folder in [image_dir, crop_dir]:
         if not os.path.exists(folder):
@@ -31,7 +32,7 @@ def init(image_dir, crop_dir):
         lut_table = [row2val(row) for row in lut_raw]
         lut = ImageFilter.Color3DLUT(lsize, lut_table)
         return lut
-    
+
     global vibrance_cube
     vibrance_cube = load_vibrance_cube()
 
@@ -65,10 +66,28 @@ def need_run_cropper(image_dir, crop_dir, bleed_edge):
     return sorted(input_files) != sorted(output_files)
 
 
-def cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, max_dpi, do_vibrance_bump, print_fn):
+def cropper(
+    image_dir,
+    crop_dir,
+    img_cache,
+    img_dict,
+    bleed_edge,
+    max_dpi,
+    do_vibrance_bump,
+    print_fn,
+):
     has_bleed_edge = bleed_edge is not None and bleed_edge > 0
     if has_bleed_edge:
-        cropper(image_dir, crop_dir, img_cache, img_dict, None, max_dpi, do_vibrance_bump, print_fn)
+        cropper(
+            image_dir,
+            crop_dir,
+            img_cache,
+            img_dict,
+            None,
+            max_dpi,
+            do_vibrance_bump,
+            print_fn,
+        )
 
     output_dir = crop_dir
     if has_bleed_edge:
@@ -76,8 +95,8 @@ def cropper(image_dir, crop_dir, img_cache, img_dict, bleed_edge, max_dpi, do_vi
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
-    needs_refresh = False   
-    
+    needs_refresh = False
+
     input_files = list_files(image_dir, valid_image_extensions)
     for img_file in input_files:
         if os.path.exists(os.path.join(output_dir, img_file)):
@@ -163,7 +182,7 @@ def thumbnail_name(img):
 
 
 def is_thumbnail_name(img):
-    return img.endswith('_thumb')
+    return img.endswith("_thumb")
 
 
 def cache_previews(file, folder, print_fn, data):
@@ -185,7 +204,7 @@ def cache_previews(file, folder, print_fn, data):
         f_thumbnail = thumbnail_name(f)
 
         has_img = f in data
-        has_size = has_img and 'size' in data[f]
+        has_size = has_img and "size" in data[f]
         has_preview = has_img and f in data.keys()
         has_thumbnail = has_img and f_thumbnail in data.keys()
         need_img = not has_size or not has_preview or not has_thumbnail
