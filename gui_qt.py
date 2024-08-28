@@ -349,6 +349,34 @@ class ActionsWidget(QGroupBox):
 
         self.setLayout(layout)
 
+        def render():
+            def render_work():
+                rgx = re.compile(r"\W")
+                pdf_path = os.path.join(
+                    cwd,
+                    (
+                        f"{re.sub(rgx, '', print_dict['filename'])}.pdf"
+                        if len(print_dict["filename"]) > 0
+                        else "_printme.pdf"
+                    ),
+                )
+                pages = pdf.generate(print_dict, crop_dir, page_sizes[print_dict["pagesize"]], pdf_path, print)
+                # pages = pdf.generate(print_dict, crop_dir, page_sizes[print_dict["pagesize"]], pdf_path, make_popup_print_fn(render_window))
+                make_popup_print_fn(render_window)("Saving PDF...")
+                pages.save()
+                try:
+                    subprocess.Popen([pdf_path], shell=True)
+                except Exception as e:
+                    print(e)
+
+            self.window().setEnabled(False)
+            render_window = popup("Rendering PDF...")
+            render_window.show_during_work(render_work)
+            del render_window
+            if self._rebuild_after_cropper:
+                card_scroll_area.refresh(print_dict, img_dict)
+            self.window().setEnabled(True)
+
         def run_cropper():
             bleed_edge = float(print_dict["bleed_edge"])
             if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
@@ -387,6 +415,7 @@ class ActionsWidget(QGroupBox):
             with open(print_json, "w") as fp:
                 json.dump(print_dict, fp)
 
+        render_button.released.connect(render)
         cropper_button.released.connect(run_cropper)
         save_button.released.connect(save_project)
 
@@ -436,6 +465,7 @@ class CardOptionsWidget(QGroupBox):
         bleed_edge_spin.setDecimals(2)
         bleed_edge_spin.setRange(0, inch_to_mm(0.12))
         bleed_edge_spin.setSingleStep(0.1)
+        bleed_edge_spin.setValue(bleed_edge_spin.valueFromText(print_dict["bleed_edge"].replace(".", ",")))
         bleed_edge = WidgetWithLabel("&Bleed Edge", bleed_edge_spin)
         
         divider = QFrame()
@@ -449,7 +479,7 @@ class CardOptionsWidget(QGroupBox):
         self.setLayout(layout)
 
         def change_bleed_edge(t):
-            print_dict["bleed_edge"] = t
+            print_dict["bleed_edge"] = t.replace(",", ".")
 
         bleed_edge_spin.textChanged.connect(change_bleed_edge)
 
