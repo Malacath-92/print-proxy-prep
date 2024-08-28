@@ -27,6 +27,8 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFrame,
     QToolTip,
+    QCheckBox,
+    QFileDialog,
 )
 
 import pdf
@@ -161,7 +163,7 @@ class CardImage(QLabel):
             card_corner_radius_inch * img_size[0] / card_size_without_bleed_inch[0]
         )
 
-        clipped_pixmap = QPixmap(img_size[0], img_size[1])
+        clipped_pixmap = QPixmap(int(img_size[0]), int(img_size[1]))
         clipped_pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
         path = QPainterPath()
@@ -530,8 +532,54 @@ class PrintOptionsWidget(QGroupBox):
         orientation._widget.currentTextChanged.connect(change_orientation)
 
 
+class BacksidePreview(QWidget):
+    def __init__(self, print_dict, img_dict):
+        super().__init__()
+
+        self._print_dict = print_dict
+        self._img_dict = img_dict
+
+        self.setLayout(QVBoxLayout())
+        self.refresh(self._print_dict["backside_default"])
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    
+    def refresh(self, backside_name):
+        if backside_name in self._img_dict:
+            backside = image.thumbnail_name(backside_name)
+            backside_data = eval(self._img_dict[backside]["data"])
+            backside_size = self._img_dict[backside]["size"]
+        else:
+            backside_data = fallback.data
+            backside_size = fallback.size
+        backside_default_image = CardImage(backside_data, backside_size)
+
+        backside_width = 120
+        backside_height = backside_default_image.heightForWidth(backside_width)
+        backside_default_image.setFixedWidth(backside_width)
+        backside_default_image.setFixedHeight(backside_height)
+
+        backside_default_label = QLabel(backside_name)
+
+        layout = self.layout()
+        for i in reversed(range(layout.count())):
+            layout.removeWidget(layout.itemAt(i).widget())
+
+        layout.addWidget(backside_default_image)
+        layout.addWidget(backside_default_label)
+        layout.setAlignment(
+            backside_default_image, QtCore.Qt.AlignmentFlag.AlignHCenter
+        )
+        layout.setAlignment(
+            backside_default_label, QtCore.Qt.AlignmentFlag.AlignHCenter
+        )
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.setLayout(layout)
+
+
 class CardOptionsWidget(QGroupBox):
-    def __init__(self, print_dict):
+    def __init__(self, print_dict, img_dict):
         super().__init__()
 
         self.setTitle("Card Options")
@@ -549,16 +597,47 @@ class CardOptionsWidget(QGroupBox):
         divider.setFrameShape(QFrame.Shape.HLine)
         divider.setFrameShadow(QFrame.Shadow.Sunken)
 
+        backside_enabled = print_dict["backside_enabled"]
+        backside_checkbox = QCheckBox("Enable Backside")
+        backside_checkbox.setCheckState(QtCore.Qt.CheckState.Checked if backside_enabled else QtCore.Qt.CheckState.Unchecked)
+        backside_default_button = QPushButton("Default")
+        backside_default_preview = BacksidePreview(print_dict, img_dict)
+
+        backside_default_button.setEnabled(backside_enabled)
+        backside_default_preview.setEnabled(backside_enabled)
+
         layout = QVBoxLayout()
         layout.addWidget(bleed_edge)
         layout.addWidget(divider)
+        layout.addWidget(backside_checkbox)
+        layout.addWidget(backside_default_button)
+        layout.addWidget(backside_default_preview)
+
+        layout.setAlignment(
+            backside_default_preview, QtCore.Qt.AlignmentFlag.AlignHCenter
+        )
 
         self.setLayout(layout)
 
         def change_bleed_edge(t):
             print_dict["bleed_edge"] = t.replace(",", ".")
+            
+        def switch_default_backside(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            print_dict["backside_enabled"] = enabled
+            backside_default_button.setEnabled(enabled)
+            backside_default_preview.setEnabled(enabled)
+            
+        def pick_backside():
+            default_backside_choice = QFileDialog.getOpenFileName(self, "Open Image", "images", f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})")
+            if default_backside_choice[0] != '':
+                new_backside_choice = os.path.basename(default_backside_choice[0])
+                print_dict["backside_default"] = new_backside_choice
+                backside_default_preview.refresh(print_dict["backside_default"])
 
         bleed_edge_spin.textChanged.connect(change_bleed_edge)
+        backside_checkbox.checkStateChanged.connect(switch_default_backside)
+        backside_default_button.released.connect(pick_backside)
 
 
 class OptionsWidget(QWidget):
@@ -584,7 +663,7 @@ class OptionsWidget(QWidget):
             img_cache,
         )
         print_options = PrintOptionsWidget(print_dict)
-        card_options = CardOptionsWidget(print_dict)
+        card_options = CardOptionsWidget(print_dict, img_dict)
 
         layout = QVBoxLayout()
         layout.addWidget(actions_widget)
