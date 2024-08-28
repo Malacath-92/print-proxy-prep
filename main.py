@@ -3,7 +3,6 @@ import json
 
 import image
 import gui_qt
-import gui_sg
 from util import *
 from constants import *
 
