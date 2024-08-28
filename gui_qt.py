@@ -298,7 +298,7 @@ class CardGrid(QWidget):
             i = i + 1
 
         self._first_item = grid_layout.itemAt(0).widget()
-        self._cols = cols
+        self._cols = min(i, cols)
         self._rows = math.ceil(i / cols)
         self._nested_resize = False
 
