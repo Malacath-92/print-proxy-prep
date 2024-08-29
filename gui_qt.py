@@ -446,6 +446,14 @@ class ActionsWidget(QGroupBox):
         self.setLayout(layout)
 
         def render():
+            bleed_edge = float(print_dict["bleed_edge"])
+            if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
+                QToolTip.showText(
+                    cropper_button.mapToGlobal(QtCore.QPoint()),
+                    "Cropper needs to be run first",
+                )
+                return
+
             def render_work():
                 rgx = re.compile(r"\W")
                 pdf_path = os.path.join(
