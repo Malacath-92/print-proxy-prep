@@ -6,7 +6,7 @@ import json
 import subprocess
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath
+from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -87,7 +87,10 @@ def popup(window, middle_text):
             if parent is not None:
                 center = self.rect().center()
                 parent_half_size = parent.rect().size() / 2
-                offset = QtCore.QPoint(parent_half_size.width(), parent_half_size.height()) - center
+                offset = (
+                    QtCore.QPoint(parent_half_size.width(), parent_half_size.height())
+                    - center
+                )
                 self.move(offset)
 
         def show_during_work(self, work):
@@ -449,7 +452,7 @@ class ActionsWidget(QGroupBox):
             bleed_edge = float(print_dict["bleed_edge"])
             if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
                 QToolTip.showText(
-                    cropper_button.mapToGlobal(QtCore.QPoint()),
+                    QCursor.pos(),
                     "Cropper needs to be run first",
                 )
                 return
@@ -528,7 +531,7 @@ class ActionsWidget(QGroupBox):
                 self.window().setEnabled(True)
             else:
                 QToolTip.showText(
-                    cropper_button.mapToGlobal(QtCore.QPoint()),
+                    QCursor.pos(),
                     "All images are already cropped",
                 )
 
