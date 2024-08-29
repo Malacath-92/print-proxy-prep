@@ -611,18 +611,15 @@ class BacksidePreview(QWidget):
     def __init__(self, print_dict, img_dict):
         super().__init__()
 
-        self._print_dict = print_dict
-        self._img_dict = img_dict
-
         self.setLayout(QVBoxLayout())
-        self.refresh(self._print_dict["backside_default"])
+        self.refresh(print_dict["backside_default"], img_dict)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-    def refresh(self, backside_name):
-        if backside_name in self._img_dict:
+    def refresh(self, backside_name, img_dict):
+        if backside_name in img_dict:
             backside = image.thumbnail_name(backside_name)
-            backside_data = eval(self._img_dict[backside]["data"])
-            backside_size = self._img_dict[backside]["size"]
+            backside_data = eval(img_dict[backside]["data"])
+            backside_size = img_dict[backside]["size"]
         else:
             backside_data = fallback.data
             backside_size = fallback.size
@@ -717,7 +714,7 @@ class CardOptionsWidget(QGroupBox):
             if default_backside_choice[0] != "":
                 new_backside_choice = os.path.basename(default_backside_choice[0])
                 print_dict["backside_default"] = new_backside_choice
-                backside_default_preview.refresh(print_dict["backside_default"])
+                backside_default_preview.refresh(print_dict["backside_default"], img_dict)
 
         bleed_edge_spin.textChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
@@ -726,7 +723,7 @@ class CardOptionsWidget(QGroupBox):
         self._backside_default_preview = backside_default_preview
 
     def refresh(self, print_dict, img_dict):
-        self._backside_default_preview.refresh(print_dict["backside_default"])
+        self._backside_default_preview.refresh(print_dict["backside_default"], img_dict)
 
 
 class OptionsWidget(QWidget):
