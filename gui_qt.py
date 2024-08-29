@@ -404,6 +404,9 @@ class CardScrollArea(QScrollArea):
 
     def refresh(self, print_dict, img_dict):
         self._card_grid.refresh(print_dict, img_dict)
+        self.setMinimumWidth(
+            self._card_grid.minimumWidth() + self.verticalScrollBar().width()
+        )
         self._card_grid.adjustSize()  # forces recomputing size
 
 
