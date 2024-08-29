@@ -44,10 +44,10 @@ def init():
     return app
 
 
-def popup(middle_text):
+def popup(window, middle_text):
     class PopupWindow(QDialog):
-        def __init__(self, text):
-            super().__init__()
+        def __init__(self, parent, text):
+            super().__init__(parent)
 
             text_widget = QLabel(text)
             layout = QVBoxLayout()
@@ -66,6 +66,8 @@ def popup(middle_text):
             self._text = text_widget
             self._thread = None
 
+            self.update_text_impl(text)
+
         def update_text(self, text, force_this_thread=False):
             if self._thread is None or force_this_thread:
                 self.update_text_impl(text)
@@ -77,6 +79,16 @@ def popup(middle_text):
             self.adjustSize()
             self._text.setText(text)
             self.adjustSize()
+
+            self.recenter()
+
+        def recenter(self):
+            parent = self.parentWidget()
+            if parent is not None:
+                center = self.rect().center()
+                parent_half_size = parent.rect().size() / 2
+                offset = QtCore.QPoint(parent_half_size.width(), parent_half_size.height()) - center
+                self.move(offset)
 
         def show_during_work(self, work):
             class WorkThread(QtCore.QThread):
@@ -95,7 +107,17 @@ def popup(middle_text):
             self.exec()
             self._thread = None
 
-    return PopupWindow(middle_text)
+        def showEvent(self, event):
+            super().showEvent(event)
+            self.recenter()
+
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            self.recenter()
+            self.recenter()
+            self.recenter()
+
+    return PopupWindow(window, middle_text)
 
 
 def make_popup_print_fn(popup):
@@ -446,7 +468,7 @@ class ActionsWidget(QGroupBox):
                     print(e)
 
             self.window().setEnabled(False)
-            render_window = popup("Rendering PDF...")
+            render_window = popup(self.window(), "Rendering PDF...")
             render_window.show_during_work(render_work)
             del render_window
             if self._rebuild_after_cropper:
@@ -487,7 +509,7 @@ class ActionsWidget(QGroupBox):
                         del print_dict["cards"][img]
 
                 self.window().setEnabled(False)
-                crop_window = popup("Cropping images...")
+                crop_window = popup(self.window(), "Cropping images...")
                 crop_window.show_during_work(cropper_work)
                 del crop_window
                 if self._rebuild_after_cropper:
