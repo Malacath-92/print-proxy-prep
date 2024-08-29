@@ -136,7 +136,7 @@ def init():
 
 app = gui.init()
 
-loading_window = gui.popup("Loading...")
+loading_window = gui.popup(None, "Loading...")
 loading_window.show_during_work(init)
 del loading_window
 

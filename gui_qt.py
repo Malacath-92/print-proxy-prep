@@ -64,9 +64,24 @@ def popup(middle_text):
             self.setAutoFillBackground(True)
 
             self._text = text_widget
+            self._thread = None
+
+        def update_text(self, text, force_this_thread=False):
+            if self._thread is None or force_this_thread:
+                self.update_text_impl(text)
+            else:
+                self._thread._refresh.emit(text)
+
+        @QtCore.pyqtSlot(str)
+        def update_text_impl(self, text):
+            self.adjustSize()
+            self._text.setText(text)
+            self.adjustSize()
 
         def show_during_work(self, work):
             class WorkThread(QtCore.QThread):
+                _refresh = QtCore.pyqtSignal(str)
+
                 def run(self):
                     work()
 
@@ -74,8 +89,11 @@ def popup(middle_text):
 
             self.open()
             work_thread.finished.connect(lambda: self.close())
+            work_thread._refresh.connect(self.update_text_impl)
             work_thread.start()
+            self._thread = work_thread
             self.exec()
+            self._thread = None
 
     return PopupWindow(middle_text)
 
@@ -83,9 +101,7 @@ def popup(middle_text):
 def make_popup_print_fn(popup):
     def popup_print_fn(text):
         print(text)
-        popup.adjustSize()
-        popup._text.setText(text)
-        popup.adjustSize()
+        popup.update_text(text)
 
     return popup_print_fn
 
@@ -420,9 +436,8 @@ class ActionsWidget(QGroupBox):
                     crop_dir,
                     page_sizes[print_dict["pagesize"]],
                     pdf_path,
-                    print,
+                    make_popup_print_fn(render_window),
                 )
-                # pages = pdf.generate(print_dict, crop_dir, page_sizes[print_dict["pagesize"]], pdf_path, make_popup_print_fn(render_window))
                 make_popup_print_fn(render_window)("Saving PDF...")
                 pages.save()
                 try:
@@ -542,7 +557,7 @@ class BacksidePreview(QWidget):
         self.setLayout(QVBoxLayout())
         self.refresh(self._print_dict["backside_default"])
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    
+
     def refresh(self, backside_name):
         if backside_name in self._img_dict:
             backside = image.thumbnail_name(backside_name)
@@ -599,7 +614,11 @@ class CardOptionsWidget(QGroupBox):
 
         backside_enabled = print_dict["backside_enabled"]
         backside_checkbox = QCheckBox("Enable Backside")
-        backside_checkbox.setCheckState(QtCore.Qt.CheckState.Checked if backside_enabled else QtCore.Qt.CheckState.Unchecked)
+        backside_checkbox.setCheckState(
+            QtCore.Qt.CheckState.Checked
+            if backside_enabled
+            else QtCore.Qt.CheckState.Unchecked
+        )
         backside_default_button = QPushButton("Default")
         backside_default_preview = BacksidePreview(print_dict, img_dict)
 
@@ -621,16 +640,21 @@ class CardOptionsWidget(QGroupBox):
 
         def change_bleed_edge(t):
             print_dict["bleed_edge"] = t.replace(",", ".")
-            
+
         def switch_default_backside(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             print_dict["backside_enabled"] = enabled
             backside_default_button.setEnabled(enabled)
             backside_default_preview.setEnabled(enabled)
-            
+
         def pick_backside():
-            default_backside_choice = QFileDialog.getOpenFileName(self, "Open Image", "images", f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})")
-            if default_backside_choice[0] != '':
+            default_backside_choice = QFileDialog.getOpenFileName(
+                self,
+                "Open Image",
+                "images",
+                f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
+            )
+            if default_backside_choice[0] != "":
                 new_backside_choice = os.path.basename(default_backside_choice[0])
                 print_dict["backside_default"] = new_backside_choice
                 backside_default_preview.refresh(print_dict["backside_default"])
