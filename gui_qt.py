@@ -168,12 +168,23 @@ class LineEditWithLabel(WidgetWithLabel):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, scroll_area, options):
         super().__init__()
 
         self.setWindowTitle("PDF Proxy Printer")
 
         self.loadState()
+
+        window_layout = QHBoxLayout()
+        window_layout.addWidget(scroll_area)
+        window_layout.addWidget(options)
+
+        window_area = QWidget()
+        window_area.setLayout(window_layout)
+        self.setCentralWidget(window_area)
+
+        self._scroll_area = scroll_area
+        self._options = options
 
     def close(self):
         self.saveSettings()
@@ -189,6 +200,10 @@ class MainWindow(QMainWindow):
         if settings.contains("version"):
             self.restoreGeometry(settings.value("geometry"))
             self.restoreState(settings.value("state"))
+
+    def refresh(self, print_dict, img_dict):
+        self._scroll_area.refresh(print_dict, img_dict)
+        self._options.refresh(print_dict, img_dict)
 
 
 class CardImage(QLabel):
@@ -416,7 +431,6 @@ class CardScrollArea(QScrollArea):
 class ActionsWidget(QGroupBox):
     def __init__(
         self,
-        card_scroll_area,
         image_dir,
         crop_dir,
         print_json,
@@ -432,8 +446,15 @@ class ActionsWidget(QGroupBox):
         render_button = QPushButton("Render Document")
         save_button = QPushButton("Save Project")
         load_button = QPushButton("Load Project")
+        images_button = QPushButton("Open Images")
 
-        buttons = [cropper_button, render_button, save_button, load_button]
+        buttons = [
+            cropper_button,
+            render_button,
+            save_button,
+            load_button,
+            images_button,
+        ]
         minimum_width = max(map(lambda x: x.sizeHint().width(), buttons))
 
         layout = QGridLayout()
@@ -442,9 +463,10 @@ class ActionsWidget(QGroupBox):
         layout.addWidget(cropper_button, 0, 0)
         layout.addWidget(render_button, 0, 1)
         layout.addWidget(save_button, 1, 0)
+        layout.addWidget(images_button, 1, 1)
 
         # TODO: Missing this feature
-        # layout.addWidget(load_button, 1, 1)
+        # layout.addWidget(load_button, 2, 1)
 
         self.setLayout(layout)
 
@@ -485,8 +507,6 @@ class ActionsWidget(QGroupBox):
             render_window = popup(self.window(), "Rendering PDF...")
             render_window.show_during_work(render_work)
             del render_window
-            if self._rebuild_after_cropper:
-                card_scroll_area.refresh(print_dict, img_dict)
             self.window().setEnabled(True)
 
         def run_cropper():
@@ -527,7 +547,7 @@ class ActionsWidget(QGroupBox):
                 crop_window.show_during_work(cropper_work)
                 del crop_window
                 if self._rebuild_after_cropper:
-                    card_scroll_area.refresh(print_dict, img_dict)
+                    self.window().refresh(print_dict, img_dict)
                 self.window().setEnabled(True)
             else:
                 QToolTip.showText(
@@ -539,9 +559,13 @@ class ActionsWidget(QGroupBox):
             with open(print_json, "w") as fp:
                 json.dump(print_dict, fp)
 
+        def open_images_folder():
+            open_folder(image_dir)
+
         render_button.released.connect(render)
         cropper_button.released.connect(run_cropper)
         save_button.released.connect(save_project)
+        images_button.released.connect(open_images_folder)
 
         self._cropper_button = cropper_button
         self._rebuild_after_cropper = False
@@ -699,11 +723,15 @@ class CardOptionsWidget(QGroupBox):
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
         backside_default_button.released.connect(pick_backside)
 
+        self._backside_default_preview = backside_default_preview
+
+    def refresh(self, print_dict, img_dict):
+        self._backside_default_preview.refresh(print_dict["backside_default"])
+
 
 class OptionsWidget(QWidget):
     def __init__(
         self,
-        card_scroll_area,
         image_dir,
         crop_dir,
         print_json,
@@ -714,7 +742,6 @@ class OptionsWidget(QWidget):
         super().__init__()
 
         actions_widget = ActionsWidget(
-            card_scroll_area,
             image_dir,
             crop_dir,
             print_json,
@@ -734,24 +761,21 @@ class OptionsWidget(QWidget):
         self.setLayout(layout)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
+        self._card_options = card_options
+
+    def refresh(self, print_dict, img_dict):
+        self._card_options.refresh(print_dict, img_dict)
+
 
 def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(card_grid)
 
     options = OptionsWidget(
-        scroll_area, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
+        image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
     )
 
-    window_layout = QHBoxLayout()
-    window_layout.addWidget(scroll_area)
-    window_layout.addWidget(options)
-
-    window_area = QWidget()
-    window_area.setLayout(window_layout)
-
-    window = MainWindow()
-    window.setCentralWidget(window_area)
+    window = MainWindow(scroll_area, options)
     window.show()
     return window
 
