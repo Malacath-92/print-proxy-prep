@@ -467,7 +467,9 @@ class CardWidget(QWidget):
         self._img_widget = img
         self._number_area = number_area
 
-        number_edit.editingFinished.connect(functools.partial(self.edit_number, print_dict))
+        number_edit.editingFinished.connect(
+            functools.partial(self.edit_number, print_dict)
+        )
         decrement_button.clicked.connect(functools.partial(self.dec_number, print_dict))
         increment_button.clicked.connect(functools.partial(self.inc_number, print_dict))
 
@@ -574,7 +576,7 @@ class CardGrid(QWidget):
             y = i % cols
             grid_layout.addWidget(card_widget, x, y)
             i = i + 1
-        
+
         if i == 0:
             dummy_name = "dummy"
             card_widget = CardWidget(print_dict, img_dict, dummy_name)
@@ -755,8 +757,8 @@ class ActionsWidget(QGroupBox):
                         img_cache,
                         img_dict,
                         bleed_edge,
-                        CFG.getint("Max.DPI"),
-                        CFG.getboolean("Vibrance.Bump"),
+                        CFG.MaxDPI,
+                        CFG.VibranceBump,
                         make_popup_print_fn(crop_window),
                     )
 
@@ -813,7 +815,7 @@ class PrintOptionsWidget(QGroupBox):
 
         print_output = LineEditWithLabel("PDF &Filename", print_dict["filename"])
         paper_sizes = ComboBoxWithLabel(
-            "Paper &Size", print_dict["page_sizes"], print_dict["pagesize"]
+            "&Paper Size", list(page_sizes.keys()), print_dict["pagesize"]
         )
         orientation = ComboBoxWithLabel(
             "&Orientation", ["Landscape", "Portrait"], print_dict["orient"]
@@ -912,9 +914,11 @@ class CardOptionsWidget(QGroupBox):
         backside_offset_spin.setRange(0, inch_to_mm(0.3))
         backside_offset_spin.setSingleStep(0.1)
         backside_offset_spin.setValue(
-            backside_offset_spin.valueFromText(print_dict["backside_offset"].replace(".", ","))
+            backside_offset_spin.valueFromText(
+                print_dict["backside_offset"].replace(".", ",")
+            )
         )
-        backside_offset = WidgetWithLabel("&Offset", backside_offset_spin)
+        backside_offset = WidgetWithLabel("Off&set", backside_offset_spin)
 
         backside_default_button.setEnabled(backside_enabled)
         backside_default_preview.setEnabled(backside_enabled)

@@ -52,9 +52,13 @@ def cap_offset_str(offset):
 
 def open_folder(path):
     if os.path.isdir(path):
-        if sys.platform == 'darwin':
-            subprocess.call(['open', '--', path])
-        elif sys.platform == 'linux2':
-            subprocess.call(['xdg-open', '--', path])
-        elif sys.platform == 'win32':
-            subprocess.call(['explorer', path])
+        if sys.platform == "darwin":
+            subprocess.call(["open", "--", path])
+        elif sys.platform.startswith("linux"):
+            subprocess.call(["xdg-open", "--", path])
+        elif sys.platform == "win32":
+            subprocess.call(["explorer", path])
+
+
+def open_file(path):
+    subprocess.Popen([path], shell=True)

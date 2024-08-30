@@ -54,8 +54,8 @@ def init():
         img_cache,
         img_dict,
         None,
-        CFG.getint("Max.DPI"),
-        CFG.getboolean("Vibrance.Bump"),
+        CFG.MaxDPI,
+        CFG.VibranceBump,
         gui.make_popup_print_fn(loading_window),
     )
 
@@ -76,9 +76,9 @@ def init():
                 bleed_edge = "0"
             print_dict["bleed_edge"] = bleed_edge
 
-        default_page_size = CFG.get("Paper.Size", "Letter")
+        default_page_size = CFG.DefaultPageSize
         default_print_dict = {
-            "cards": { "dummy": 1 },
+            "cards": {"dummy": 1},
             # program window settings
             "size": (None, None),  # only used by the PySimpleGui implementation
             "columns": 5,
@@ -91,7 +91,6 @@ def init():
             "pagesize": (
                 default_page_size if default_page_size in page_sizes else "Letter"
             ),
-            "page_sizes": list(page_sizes.keys()),
             "orient": "Portrait",
             "bleed_edge": "0",
             "filename": "_printme",
@@ -128,8 +127,8 @@ def init():
             img_cache,
             img_dict,
             bleed_edge,
-            CFG.getint("Max.DPI"),
-            CFG.getboolean("Vibrance.Bump"),
+            CFG.MaxDPI,
+            CFG.VibranceBump,
             gui.make_popup_print_fn(loading_window),
         )
 

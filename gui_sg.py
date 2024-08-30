@@ -219,7 +219,7 @@ def window_setup(image_dir, crop_dir, _, print_dict, img_dict, __):
             sg.Button(button_text=" Config ", size=(10, 1), key="CONFIG"),
             sg.Text("Paper Size:"),
             sg.Combo(
-                print_dict["page_sizes"],
+                list(page_sizes.keys()),
                 default_value=print_dict["pagesize"],
                 readonly=True,
                 key="PAPER",
@@ -497,7 +497,7 @@ def event_loop(
             print_dict["filename"] = window["FILENAME"].get()
 
         if "CONFIG" in event:
-            subprocess.Popen(["config.ini"], shell=True)
+            open_file("config.ini")
 
         if "SAVE" in event:
             with open(print_json, "w") as fp:
@@ -520,8 +520,8 @@ def event_loop(
                     img_cache,
                     img_dict,
                     bleed_edge,
-                    constants.CFG.getint("Max.DPI"),
-                    constants.CFG.getboolean("Vibrance.Bump"),
+                    constants.CFG.MaxDPI,
+                    constants.CFG.VibranceBump,
                     make_popup_print_fn(crop_window),
                 )
                 crop_window.close()
