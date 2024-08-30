@@ -3,8 +3,9 @@ import re
 import sys
 import math
 import json
-import subprocess
+import shutil
 import functools
+import subprocess
 
 import PyQt6.QtCore as QtCore
 from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor
@@ -938,8 +939,8 @@ class CardOptionsWidget(QGroupBox):
 
         self.setLayout(layout)
 
-        def change_bleed_edge(t):
-            print_dict["bleed_edge"] = t.replace(",", ".")
+        def change_bleed_edge(v):
+            print_dict["bleed_edge"] = v
 
         def switch_default_backside(s):
             enabled = s == QtCore.Qt.CheckState.Checked
@@ -960,7 +961,7 @@ class CardOptionsWidget(QGroupBox):
         def change_backside_offset(t):
             print_dict["backside_offset"] = t.replace(",", ".")
 
-        bleed_edge_spin.textChanged.connect(change_bleed_edge)
+        bleed_edge_spin.valueChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
         backside_default_button.released.connect(pick_backside)
         backside_offset_spin.textChanged.connect(change_backside_offset)
@@ -969,6 +970,65 @@ class CardOptionsWidget(QGroupBox):
 
     def refresh(self, print_dict, img_dict):
         self._backside_default_preview.refresh(print_dict["backside_default"], img_dict)
+
+
+class GlobalOptionsWidget(QGroupBox):
+    def __init__(self, crop_dir, img_cache):
+        super().__init__()
+
+        self.setTitle("Global Config")
+
+        vibrance_checkbox = QCheckBox("Vibrance Bump")
+        vibrance_checkbox.setCheckState(
+            QtCore.Qt.CheckState.Checked
+            if CFG.VibranceBump
+            else QtCore.Qt.CheckState.Unchecked
+        )
+        vibrance_checkbox.setToolTip("Requires rerunning cropper")
+
+        max_dpi_spin_box = QDoubleSpinBox()
+        max_dpi_spin_box.setDecimals(0)
+        max_dpi_spin_box.setRange(300, 1200)
+        max_dpi_spin_box.setSingleStep(100)
+        max_dpi_spin_box.setValue(CFG.MaxDPI)
+        max_dpi = WidgetWithLabel("&Max DPI", max_dpi_spin_box)
+        max_dpi.setToolTip("Requires rerunning cropper")
+
+        paper_sizes = ComboBoxWithLabel(
+            "Default P&aper Size", list(page_sizes.keys()), CFG.DefaultPageSize
+        )
+
+        layout = QVBoxLayout()
+        layout.addWidget(vibrance_checkbox)
+        layout.addWidget(max_dpi)
+        layout.addWidget(paper_sizes)
+
+        self.setLayout(layout)
+
+        def apply_config(force_recrop):
+            if force_recrop:
+                if os.path.exists(crop_dir) and os.path.isdir(crop_dir):
+                    shutil.rmtree(crop_dir)
+                if os.path.exists(img_cache) and os.path.isfile(img_cache):
+                    os.remove(img_cache)
+            save_config(CFG)
+
+        def change_vibrance_bump(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            CFG.VibranceBump = enabled
+            apply_config(True)
+
+        def change_max_dpi(v):
+            CFG.MaxDPI = int(v)
+            apply_config(True)
+
+        def change_papersize(t):
+            CFG.DefaultPageSize = t
+            apply_config(False)
+
+        vibrance_checkbox.checkStateChanged.connect(change_vibrance_bump)
+        max_dpi_spin_box.valueChanged.connect(change_max_dpi)
+        paper_sizes._widget.currentTextChanged.connect(change_papersize)
 
 
 class OptionsWidget(QWidget):
@@ -993,11 +1053,13 @@ class OptionsWidget(QWidget):
         )
         print_options = PrintOptionsWidget(print_dict)
         card_options = CardOptionsWidget(print_dict, img_dict)
+        global_options = GlobalOptionsWidget(crop_dir, img_cache)
 
         layout = QVBoxLayout()
         layout.addWidget(actions_widget)
         layout.addWidget(print_options)
         layout.addWidget(card_options)
+        layout.addWidget(global_options)
         layout.addStretch()
 
         self.setLayout(layout)

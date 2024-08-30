@@ -13,24 +13,40 @@ card_size_without_bleed_inch = (2.48, 3.46)
 card_ratio = card_size_without_bleed_inch[0] / card_size_without_bleed_inch[1]
 
 
-GlobalConfig = typing.NamedTuple(
-    "GlobalConfig",
-    [
-        ("VibranceBump", bool),
-        ("MaxDPI", int),
-        ("DefaultPageSize", str),
-    ],
-)
+class GlobalConfig():
+    def __init__(self):
+        self.VibranceBump = False
+        self.MaxDPI = 1200
+        self.DefaultPageSize = "Letter"
 
 
-def load_config(path) -> GlobalConfig:
+def load_config() -> GlobalConfig:
+    cfg_path = os.path.join(cwd, "config.ini")
+
     config_parser = configparser.ConfigParser()
-    config_parser.read(os.path.join(cwd, path))
-    cfg = config_parser["DEFAULT"]
+    config_parser.read(cfg_path)
+
+    def_cfg = config_parser["DEFAULT"]
     parsed_config = GlobalConfig()
-    parsed_config.VibranceBump = cfg.getboolean("Vibrance.Bump", False)
-    parsed_config.MaxDPI = cfg.getint("Max.DPI", 1200)
-    parsed_config.DefaultPageSize = cfg.get("Page.Size", "Letter")
+    parsed_config.VibranceBump = def_cfg.getboolean("Vibrance.Bump", False)
+    parsed_config.MaxDPI = def_cfg.getint("Max.DPI", 1200)
+    parsed_config.DefaultPageSize = def_cfg.get("Page.Size", "Letter")
+
     return parsed_config
 
-CFG = load_config("config.ini")
+
+def save_config(cfg):
+    cfg_path = os.path.join(cwd, "config.ini")
+
+    config_parser = configparser.ConfigParser()
+
+    def_cfg = config_parser["DEFAULT"]
+    def_cfg["Vibrance.Bump"] = str(cfg.VibranceBump)
+    def_cfg["Max.DPI"] = str(cfg.MaxDPI)
+    def_cfg["Page.Size"] = cfg.DefaultPageSize
+
+    with open(cfg_path, 'w') as configfile:
+        config_parser.write(configfile)
+
+
+CFG = load_config()
