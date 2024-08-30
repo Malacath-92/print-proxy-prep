@@ -25,7 +25,7 @@ def is_window_maximized(window):
         return "-fullscreen" in window.TKroot.attributes()
 
 
-def popup(middle_text):
+def popup(_, middle_text):
     class PopUp(sg.Window):
         def __init__(self):
             super().__init__(
