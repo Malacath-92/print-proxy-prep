@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QVBoxLayout,
     QHBoxLayout,
+    QStackedLayout,
+    QStackedWidget,
     QScrollArea,
     QStyle,
     QCommonStyle,
@@ -129,6 +131,18 @@ def make_popup_print_fn(popup):
         popup.update_text(text)
 
     return popup_print_fn
+
+
+def image_file_dialog(parent=None):
+    choice = QFileDialog.getOpenFileName(
+        parent,
+        "Open Image",
+        "images",
+        f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
+    )[0]
+    if choice != "":
+        choice = os.path.basename(choice)
+    return choice
 
 
 class WidgetWithLabel(QWidget):
@@ -248,6 +262,110 @@ class CardImage(QLabel):
         return int(width / card_ratio)
 
 
+class BacksideImage(CardImage):
+    def __init__(self, backside_name, img_dict):
+        if backside_name in img_dict:
+            backside = image.thumbnail_name(backside_name)
+            backside_data = eval(img_dict[backside]["data"])
+            backside_size = img_dict[backside]["size"]
+        else:
+            backside_data = fallback.data
+            backside_size = fallback.size
+
+        super().__init__(backside_data, backside_size)
+
+
+class StackedCardBacksideView(QStackedWidget):
+    _backside_released = QtCore.pyqtSignal()
+
+    def __init__(self, img: QWidget, backside: QWidget):
+        super().__init__()
+
+        backside_layout = QHBoxLayout()
+        backside_layout.addStretch()
+        backside_layout.addWidget(
+            backside, alignment=QtCore.Qt.AlignmentFlag.AlignBottom
+        )
+        backside_layout.setContentsMargins(0, 0, 0, 0)
+
+        backside_container = QWidget(self)
+        backside_container.setLayout(backside_layout)
+
+        img.setMouseTracking(True)
+        backside.setMouseTracking(True)
+        backside_container.setMouseTracking(True)
+        self.setMouseTracking(True)
+
+        self.addWidget(img)
+        self.addWidget(backside_container)
+        self.layout().setStackingMode(QStackedLayout.StackingMode.StackAll)
+        self.layout().setAlignment(
+            backside,
+            QtCore.Qt.AlignmentFlag.AlignBottom | QtCore.Qt.AlignmentFlag.AlignRight,
+        )
+
+        self._img = img
+        self._backside = backside
+        self._backside_container = backside_container
+
+    def refresh_backside(self, new_backside):
+        new_backside.setMouseTracking(True)
+
+        layout = self._backside_container.layout()
+        self._backside.setParent(None)
+        layout.addWidget(new_backside)
+        layout.addWidget(new_backside, alignment=QtCore.Qt.AlignmentFlag.AlignBottom)
+        self._backside = new_backside
+
+        self.refresh_sizes(self.rect().size())
+
+    def refresh_sizes(self, size):
+        width = size.width()
+        height = size.height()
+
+        img_width = int(width * 0.9)
+        img_height = int(height * 0.9)
+
+        backside_width = int(width * 0.45)
+        backside_height = int(height * 0.45)
+
+        self._img.setFixedWidth(img_width)
+        self._img.setFixedHeight(img_height)
+        self._backside.setFixedWidth(backside_width)
+        self._backside.setFixedHeight(backside_height)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.refresh_sizes(event.size())
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+
+        x = event.pos().x()
+        y = event.pos().y()
+
+        neg_backside_width = self.rect().width() - self._backside.rect().size().width()
+        neg_backside_height = (
+            self.rect().height() - self._backside.rect().size().height()
+        )
+
+        if x >= neg_backside_width and y >= neg_backside_height:
+            self.setCurrentWidget(self._backside_container)
+        else:
+            self.setCurrentWidget(self._img)
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+
+        self.setCurrentWidget(self._img)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+
+        if self.currentWidget() == self._backside_container:
+            self._backside_released.emit()
+
+
 class CardWidget(QWidget):
     def __init__(self, print_dict, img_dict, card_name):
         super().__init__()
@@ -255,6 +373,15 @@ class CardWidget(QWidget):
         img_data = eval(img_dict[card_name]["data"])
         img_size = img_dict[card_name]["size"]
         img = CardImage(img_data, img_size)
+
+        backside_img = None
+        if print_dict["backside_enabled"]:
+            backside_name = (
+                print_dict["backsides"][card_name]
+                if card_name in print_dict["backsides"]
+                else print_dict["backside_default"]
+            )
+            backside_img = BacksideImage(backside_name, img_dict)
 
         number_edit = QLineEdit()
         number_edit.setValidator(QIntValidator(0, 100, self))
@@ -281,8 +408,22 @@ class CardWidget(QWidget):
         number_area.setLayout(number_layout)
         number_area.setFixedHeight(20)
 
+        if backside_img is not None:
+            card_widget = StackedCardBacksideView(img, backside_img)
+
+            def backside_button_changed():
+                backside_choice = image_file_dialog(self)
+                if backside_choice != "":
+                    print_dict["backsides"][card_name] = backside_choice
+                    new_backside_img = BacksideImage(backside_choice, img_dict)
+                    card_widget.refresh_backside(new_backside_img)
+
+            card_widget._backside_released.connect(backside_button_changed)
+        else:
+            card_widget = img
+
         layout = QVBoxLayout()
-        layout.addWidget(img)
+        layout.addWidget(card_widget)
         layout.addWidget(number_area)
 
         self.setLayout(layout)
@@ -608,22 +749,15 @@ class PrintOptionsWidget(QGroupBox):
 
 
 class BacksidePreview(QWidget):
-    def __init__(self, print_dict, img_dict):
+    def __init__(self, backside_name, img_dict):
         super().__init__()
 
         self.setLayout(QVBoxLayout())
-        self.refresh(print_dict["backside_default"], img_dict)
+        self.refresh(backside_name, img_dict)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def refresh(self, backside_name, img_dict):
-        if backside_name in img_dict:
-            backside = image.thumbnail_name(backside_name)
-            backside_data = eval(img_dict[backside]["data"])
-            backside_size = img_dict[backside]["size"]
-        else:
-            backside_data = fallback.data
-            backside_size = fallback.size
-        backside_default_image = CardImage(backside_data, backside_size)
+        backside_default_image = BacksideImage(backside_name, img_dict)
 
         backside_width = 120
         backside_height = backside_default_image.heightForWidth(backside_width)
@@ -677,7 +811,9 @@ class CardOptionsWidget(QGroupBox):
             else QtCore.Qt.CheckState.Unchecked
         )
         backside_default_button = QPushButton("Default")
-        backside_default_preview = BacksidePreview(print_dict, img_dict)
+        backside_default_preview = BacksidePreview(
+            print_dict["backside_default"], img_dict
+        )
 
         backside_default_button.setEnabled(backside_enabled)
         backside_default_preview.setEnabled(backside_enabled)
@@ -703,18 +839,15 @@ class CardOptionsWidget(QGroupBox):
             print_dict["backside_enabled"] = enabled
             backside_default_button.setEnabled(enabled)
             backside_default_preview.setEnabled(enabled)
+            self.window().refresh(print_dict, img_dict)
 
         def pick_backside():
-            default_backside_choice = QFileDialog.getOpenFileName(
-                self,
-                "Open Image",
-                "images",
-                f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
-            )
-            if default_backside_choice[0] != "":
-                new_backside_choice = os.path.basename(default_backside_choice[0])
-                print_dict["backside_default"] = new_backside_choice
-                backside_default_preview.refresh(print_dict["backside_default"], img_dict)
+            default_backside_choice = image_file_dialog(self)
+            if default_backside_choice != "":
+                print_dict["backside_default"] = default_backside_choice
+                backside_default_preview.refresh(
+                    print_dict["backside_default"], img_dict
+                )
 
         bleed_edge_spin.textChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
