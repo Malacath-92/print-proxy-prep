@@ -842,8 +842,18 @@ class CardOptionsWidget(QGroupBox):
             print_dict["backside_default"], img_dict
         )
 
+        backside_offset_spin = QDoubleSpinBox()
+        backside_offset_spin.setDecimals(2)
+        backside_offset_spin.setRange(0, inch_to_mm(0.3))
+        backside_offset_spin.setSingleStep(0.1)
+        backside_offset_spin.setValue(
+            backside_offset_spin.valueFromText(print_dict["backside_offset"].replace(".", ","))
+        )
+        backside_offset = WidgetWithLabel("&Offset", backside_offset_spin)
+
         backside_default_button.setEnabled(backside_enabled)
         backside_default_preview.setEnabled(backside_enabled)
+        backside_offset.setEnabled(backside_enabled)
 
         layout = QVBoxLayout()
         layout.addWidget(bleed_edge)
@@ -851,6 +861,7 @@ class CardOptionsWidget(QGroupBox):
         layout.addWidget(backside_checkbox)
         layout.addWidget(backside_default_button)
         layout.addWidget(backside_default_preview)
+        layout.addWidget(backside_offset)
 
         layout.setAlignment(
             backside_default_preview, QtCore.Qt.AlignmentFlag.AlignHCenter
@@ -877,9 +888,13 @@ class CardOptionsWidget(QGroupBox):
                 )
                 self.window().refresh(print_dict, img_dict)
 
+        def change_backside_offset(t):
+            print_dict["backside_offset"] = t.replace(",", ".")
+
         bleed_edge_spin.textChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
         backside_default_button.released.connect(pick_backside)
+        backside_offset_spin.textChanged.connect(change_backside_offset)
 
         self._backside_default_preview = backside_default_preview
 
