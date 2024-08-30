@@ -227,7 +227,7 @@ class CardImage(QLabel):
         raw_pixmap = QPixmap()
         raw_pixmap.loadFromData(img_data, "PNG")
 
-        card_size_minimum_width_pixels = 110
+        card_size_minimum_width_pixels = 130
         card_corner_radius_inch = 1 / 8
         card_corner_radius_pixels = (
             card_corner_radius_inch * img_size[0] / card_size_without_bleed_inch[0]
@@ -276,13 +276,28 @@ class BacksideImage(CardImage):
 
 
 class StackedCardBacksideView(QStackedWidget):
+    _backside_reset = QtCore.pyqtSignal()
     _backside_released = QtCore.pyqtSignal()
 
     def __init__(self, img: QWidget, backside: QWidget):
         super().__init__()
 
+        style = QCommonStyle()
+
+        reset_button = QPushButton()
+        reset_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_DialogResetButton)
+        )
+        reset_button.setToolTip("Reset to Default")
+        reset_button.released.connect(self._backside_reset)
+
+        backside.setToolTip("Choose individual Backside")
+
         backside_layout = QHBoxLayout()
         backside_layout.addStretch()
+        backside_layout.addWidget(
+            reset_button, alignment=QtCore.Qt.AlignmentFlag.AlignBottom
+        )
         backside_layout.addWidget(
             backside, alignment=QtCore.Qt.AlignmentFlag.AlignBottom
         )
@@ -411,14 +426,26 @@ class CardWidget(QWidget):
         if backside_img is not None:
             card_widget = StackedCardBacksideView(img, backside_img)
 
-            def backside_button_changed():
+            def backside_reset():
+                if card_name in print_dict["backsides"]:
+                    del print_dict["backsides"][card_name]
+                    new_backside_img = BacksideImage(
+                        print_dict["backside_default"], img_dict
+                    )
+                    card_widget.refresh_backside(new_backside_img)
+
+            def backside_choose():
                 backside_choice = image_file_dialog(self)
-                if backside_choice != "":
+                if backside_choice != "" and (
+                    card_name not in print_dict["backsides"]
+                    or backside_choice != print_dict["backsides"][card_name]
+                ):
                     print_dict["backsides"][card_name] = backside_choice
                     new_backside_img = BacksideImage(backside_choice, img_dict)
                     card_widget.refresh_backside(new_backside_img)
 
-            card_widget._backside_released.connect(backside_button_changed)
+            card_widget._backside_reset.connect(backside_reset)
+            card_widget._backside_released.connect(backside_choose)
         else:
             card_widget = img
 
@@ -521,7 +548,7 @@ class CardGrid(QWidget):
     def refresh(self, print_dict, img_dict):
         grid_layout = self.layout()
         for i in reversed(range(grid_layout.count())):
-            grid_layout.removeWidget(grid_layout.itemAt(i).widget())
+            grid_layout.itemAt(i).widget().setParent(None)
 
         i = 0
         cols = print_dict["columns"]
@@ -768,7 +795,7 @@ class BacksidePreview(QWidget):
 
         layout = self.layout()
         for i in reversed(range(layout.count())):
-            layout.removeWidget(layout.itemAt(i).widget())
+            layout.itemAt(i).widget().setParent(None)
 
         layout.addWidget(backside_default_image)
         layout.addWidget(backside_default_label)
@@ -848,6 +875,7 @@ class CardOptionsWidget(QGroupBox):
                 backside_default_preview.refresh(
                     print_dict["backside_default"], img_dict
                 )
+                self.window().refresh(print_dict, img_dict)
 
         bleed_edge_spin.textChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
