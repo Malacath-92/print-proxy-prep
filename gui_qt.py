@@ -291,7 +291,9 @@ class StackedCardBacksideView(QStackedWidget):
         reset_button.setIcon(
             style.standardIcon(QStyle.StandardPixmap.SP_DialogResetButton)
         )
-        reset_button.setToolTip("Reset to Default")
+        reset_button.setToolTip("Reset Backside to Default")
+        reset_button.setFixedWidth(20)
+        reset_button.setFixedHeight(20)
         reset_button.released.connect(self._backside_reset)
 
         backside.setToolTip("Choose individual Backside")
@@ -889,6 +891,7 @@ class CardOptionsWidget(QGroupBox):
         bleed_edge_spin.setDecimals(2)
         bleed_edge_spin.setRange(0, inch_to_mm(0.12))
         bleed_edge_spin.setSingleStep(0.1)
+        bleed_edge_spin.setSuffix("mm")
         bleed_edge_spin.setValue(
             bleed_edge_spin.valueFromText(print_dict["bleed_edge"].replace(".", ","))
         )
@@ -912,8 +915,9 @@ class CardOptionsWidget(QGroupBox):
 
         backside_offset_spin = QDoubleSpinBox()
         backside_offset_spin.setDecimals(2)
-        backside_offset_spin.setRange(0, inch_to_mm(0.3))
+        backside_offset_spin.setRange(-inch_to_mm(0.3), inch_to_mm(0.3))
         backside_offset_spin.setSingleStep(0.1)
+        backside_offset_spin.setSuffix("mm")
         backside_offset_spin.setValue(
             backside_offset_spin.valueFromText(
                 print_dict["backside_offset"].replace(".", ",")
