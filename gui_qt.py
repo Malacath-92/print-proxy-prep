@@ -403,17 +403,9 @@ class CardWidget(QWidget):
         number_edit.setText(str(print_dict["cards"][card_name]))
         number_edit.setFixedWidth(40)
 
-        style = QCommonStyle()
+        left_arrow = QPushButton("➖")
 
-        left_arrow = QPushButton("-")
-        font = left_arrow.font()
-        font.setBold(True)
-        left_arrow.setFont(font)
-
-        right_arrow = QPushButton("+")
-        font = right_arrow.font()
-        font.setBold(True)
-        right_arrow.setFont(font)
+        right_arrow = QPushButton("➕")
 
         number_layout = QHBoxLayout()
         number_layout.addStretch()
