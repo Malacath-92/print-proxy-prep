@@ -405,11 +405,15 @@ class CardWidget(QWidget):
 
         style = QCommonStyle()
 
-        left_arrow = QPushButton()
-        left_arrow.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
+        left_arrow = QPushButton("-")
+        font = left_arrow.font()
+        font.setBold(True)
+        left_arrow.setFont(font)
 
-        right_arrow = QPushButton()
-        right_arrow.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_ArrowUp))
+        right_arrow = QPushButton("+")
+        font = right_arrow.font()
+        font.setBold(True)
+        right_arrow.setFont(font)
 
         number_layout = QHBoxLayout()
         number_layout.addStretch()
