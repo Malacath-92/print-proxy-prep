@@ -4,6 +4,7 @@ import sys
 import math
 import json
 import subprocess
+import functools
 
 import PyQt6.QtCore as QtCore
 from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor
@@ -195,6 +196,7 @@ class MainWindow(QMainWindow):
 
         window_area = QWidget()
         window_area.setLayout(window_layout)
+
         self.setCentralWidget(window_area)
 
         self._scroll_area = scroll_area
@@ -385,8 +387,12 @@ class CardWidget(QWidget):
     def __init__(self, print_dict, img_dict, card_name):
         super().__init__()
 
-        img_data = eval(img_dict[card_name]["data"])
-        img_size = img_dict[card_name]["size"]
+        if card_name in img_dict:
+            img_data = eval(img_dict[card_name]["data"])
+            img_size = img_dict[card_name]["size"]
+        else:
+            img_data = fallback.data
+            img_size = fallback.size
         img = CardImage(img_data, img_size)
 
         backside_img = None
@@ -403,15 +409,17 @@ class CardWidget(QWidget):
         number_edit.setText(str(print_dict["cards"][card_name]))
         number_edit.setFixedWidth(40)
 
-        left_arrow = QPushButton("➖")
+        decrement_button = QPushButton("➖")
+        increment_button = QPushButton("➕")
 
-        right_arrow = QPushButton("➕")
+        decrement_button.setToolTip("Remove one")
+        increment_button.setToolTip("Add one")
 
         number_layout = QHBoxLayout()
         number_layout.addStretch()
-        number_layout.addWidget(left_arrow)
+        number_layout.addWidget(decrement_button)
         number_layout.addWidget(number_edit)
-        number_layout.addWidget(right_arrow)
+        number_layout.addWidget(increment_button)
         number_layout.addStretch()
         number_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -459,33 +467,17 @@ class CardWidget(QWidget):
         self._img_widget = img
         self._number_area = number_area
 
-        def apply_number(number):
-            number_edit.setText(str(number))
-            print_dict["cards"][card_name] = number
-
-        def edit_number():
-            number = int(number_edit.text())
-            number = max(number, 0)
-            apply_number(number)
-
-        def dec_number():
-            number = print_dict["cards"][card_name] - 1
-            number = max(number, 0)
-            apply_number(number)
-
-        def inc_number():
-            number = print_dict["cards"][card_name] + 1
-            number = min(number, 999)
-            apply_number(number)
-
-        number_edit.editingFinished.connect(edit_number)
-        left_arrow.clicked.connect(dec_number)
-        right_arrow.clicked.connect(inc_number)
+        number_edit.editingFinished.connect(functools.partial(self.edit_number, print_dict))
+        decrement_button.clicked.connect(functools.partial(self.dec_number, print_dict))
+        increment_button.clicked.connect(functools.partial(self.inc_number, print_dict))
 
         margins = self.layout().contentsMargins()
         minimum_img_width = img.minimumWidth()
         minimum_width = minimum_img_width + margins.left() + margins.right()
         self.setMinimumSize(minimum_width, self.heightForWidth(minimum_width))
+
+        self._number_edit = number_edit
+        self._card_name = card_name
 
     def heightForWidth(self, width):
         margins = self.layout().contentsMargins()
@@ -498,10 +490,31 @@ class CardWidget(QWidget):
 
         return img_height + number_height + margins.top() + margins.bottom() + spacing
 
+    def apply_number(self, print_dict, number):
+        self._number_edit.setText(str(number))
+        print_dict["cards"][self._card_name] = number
+
+    def edit_number(self, print_dict):
+        number = int(self._number_edit.text())
+        number = max(number, 0)
+        self.apply_number(print_dict, number)
+
+    def dec_number(self, print_dict):
+        number = print_dict["cards"][self._card_name] - 1
+        number = max(number, 0)
+        self.apply_number(print_dict, number)
+
+    def inc_number(self, print_dict):
+        number = print_dict["cards"][self._card_name] + 1
+        number = min(number, 999)
+        self.apply_number(print_dict, number)
+
 
 class CardGrid(QWidget):
     def __init__(self, print_dict, img_dict):
         super().__init__()
+
+        self._cards = {}
 
         grid_layout = QGridLayout()
         self.setLayout(grid_layout)
@@ -542,9 +555,11 @@ class CardGrid(QWidget):
         self.setFixedHeight(height)
 
     def refresh(self, print_dict, img_dict):
+        for card in self._cards.values():
+            card.setParent(None)
+        self._cards = {}
+
         grid_layout = self.layout()
-        for i in reversed(range(grid_layout.count())):
-            grid_layout.itemAt(i).widget().setParent(None)
 
         i = 0
         cols = print_dict["columns"]
@@ -552,12 +567,22 @@ class CardGrid(QWidget):
             if card_name.startswith("__") or card_name not in img_dict:
                 continue
 
+            card_widget = CardWidget(print_dict, img_dict, card_name)
+            self._cards[card_name] = card_widget
+
             x = i // cols
             y = i % cols
-            grid_layout.addWidget(CardWidget(print_dict, img_dict, card_name), x, y)
+            grid_layout.addWidget(card_widget, x, y)
             i = i + 1
+        
+        if i == 0:
+            dummy_name = "dummy"
+            card_widget = CardWidget(print_dict, img_dict, dummy_name)
+            self._cards[dummy_name] = card_widget
+            grid_layout.addWidget(card_widget, 0, 0)
+            i = 1
 
-        self._first_item = grid_layout.itemAt(0).widget()
+        self._first_item = list(self._cards.values())[0]
         self._cols = min(i, cols)
         self._rows = math.ceil(i / cols)
         self._nested_resize = False
@@ -571,16 +596,60 @@ class CardGrid(QWidget):
 
 
 class CardScrollArea(QScrollArea):
-    def __init__(self, card_grid):
+    def __init__(self, print_dict, card_grid):
         super().__init__()
 
+        global_label = QLabel("Global Controls:")
+        global_decrement_button = QPushButton("➖")
+        global_increment_button = QPushButton("➕")
+        global_set_zero_button = QPushButton("Reset All")
+
+        global_decrement_button.setToolTip("Remove one from all")
+        global_increment_button.setToolTip("Add one to all")
+        global_set_zero_button.setToolTip("Set all to zero")
+
+        global_number_layout = QHBoxLayout()
+        global_number_layout.addWidget(global_label)
+        global_number_layout.addWidget(global_decrement_button)
+        global_number_layout.addWidget(global_increment_button)
+        global_number_layout.addWidget(global_set_zero_button)
+        global_number_layout.addStretch()
+        global_number_layout.setContentsMargins(6, 0, 6, 0)
+
+        global_number_widget = QWidget()
+        global_number_widget.setLayout(global_number_layout)
+
+        card_area_layout = QVBoxLayout()
+        card_area_layout.addWidget(global_number_widget)
+        card_area_layout.addWidget(card_grid)
+        card_area_layout.setSpacing(0)
+
+        card_area = QWidget()
+        card_area.setLayout(card_area_layout)
+
         self.setWidgetResizable(True)
-        self.setWidget(card_grid)
+        self.setWidget(card_area)
 
         self.setMinimumWidth(
             card_grid.minimumWidth() + self.verticalScrollBar().width()
         )
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+
+        def dec_number():
+            for card in card_grid._cards.values():
+                card.dec_number(print_dict)
+
+        def inc_number():
+            for card in card_grid._cards.values():
+                card.inc_number(print_dict)
+
+        def reset_number():
+            for card in card_grid._cards.values():
+                card.apply_number(print_dict, 0)
+
+        global_decrement_button.clicked.connect(dec_number)
+        global_increment_button.clicked.connect(inc_number)
+        global_set_zero_button.clicked.connect(reset_number)
 
         self._card_grid = card_grid
 
@@ -938,7 +1007,7 @@ class OptionsWidget(QWidget):
 
 def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
     card_grid = CardGrid(print_dict, img_dict)
-    scroll_area = CardScrollArea(card_grid)
+    scroll_area = CardScrollArea(print_dict, card_grid)
 
     options = OptionsWidget(
         image_dir, crop_dir, print_json, print_dict, img_dict, img_cache

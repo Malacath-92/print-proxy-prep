@@ -78,7 +78,7 @@ def init():
 
         default_page_size = CFG.get("Paper.Size", "Letter")
         default_print_dict = {
-            "cards": {},
+            "cards": { "dummy": 1 },
             # program window settings
             "size": (None, None),  # only used by the PySimpleGui implementation
             "columns": 5,
