@@ -8,7 +8,7 @@ import functools
 import subprocess
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor
+from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -191,6 +191,13 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("PDF Proxy Printer")
+
+        icon = QIcon("proxy.png")
+        self.setWindowIcon(icon)
+        if sys.platform == 'win32':
+            import ctypes
+            myappid = u'proxy.printer' # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
         self.loadState()
 
