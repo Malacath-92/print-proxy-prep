@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QScrollArea,
     QStyle,
+    QStyleFactory,
     QCommonStyle,
     QSizePolicy,
     QGroupBox,
@@ -45,6 +46,8 @@ import fallback_image as fallback
 
 def init():
     app = QApplication(sys.argv)
+    if "Fusion" in QStyleFactory.keys():
+        QApplication.setStyle(QStyleFactory.create("Fusion"))
     return app
 
 

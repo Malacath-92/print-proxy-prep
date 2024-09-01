@@ -70,7 +70,7 @@ def init():
                     if img not in print_dict["cards"].keys():
                         print_dict["cards"][img] = 0 if img.startswith("__") else 1
             # Make sure we have a sensible bleed edge
-            bleed_edge = print_dict["bleed_edge"]
+            bleed_edge = str(print_dict["bleed_edge"])
             bleed_edge = cap_bleed_edge_str(bleed_edge)
             if not is_number_string(bleed_edge):
                 bleed_edge = "0"
