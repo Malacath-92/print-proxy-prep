@@ -280,7 +280,7 @@ class BacksideImage(CardImage):
 
 class StackedCardBacksideView(QStackedWidget):
     _backside_reset = QtCore.pyqtSignal()
-    _backside_released = QtCore.pyqtSignal()
+    _backside_clicked = QtCore.pyqtSignal()
 
     def __init__(self, img: QWidget, backside: QWidget):
         super().__init__()
@@ -294,7 +294,7 @@ class StackedCardBacksideView(QStackedWidget):
         reset_button.setToolTip("Reset Backside to Default")
         reset_button.setFixedWidth(20)
         reset_button.setFixedHeight(20)
-        reset_button.released.connect(self._backside_reset)
+        reset_button.clicked.connect(self._backside_reset)
 
         backside.setToolTip("Choose individual Backside")
 
@@ -383,7 +383,7 @@ class StackedCardBacksideView(QStackedWidget):
         super().mouseReleaseEvent(event)
 
         if self.currentWidget() == self._backside_container:
-            self._backside_released.emit()
+            self._backside_clicked.emit()
 
 
 class CardWidget(QWidget):
@@ -452,7 +452,7 @@ class CardWidget(QWidget):
                     card_widget.refresh_backside(new_backside_img)
 
             card_widget._backside_reset.connect(backside_reset)
-            card_widget._backside_released.connect(backside_choose)
+            card_widget._backside_clicked.connect(backside_choose)
         else:
             card_widget = img
 
@@ -800,10 +800,10 @@ class ActionsWidget(QGroupBox):
         def open_images_folder():
             open_folder(image_dir)
 
-        render_button.released.connect(render)
-        cropper_button.released.connect(run_cropper)
-        save_button.released.connect(save_project)
-        images_button.released.connect(open_images_folder)
+        render_button.clicked.connect(render)
+        cropper_button.clicked.connect(run_cropper)
+        save_button.clicked.connect(save_project)
+        images_button.clicked.connect(open_images_folder)
 
         self._cropper_button = cropper_button
         self._rebuild_after_cropper = False
@@ -967,7 +967,7 @@ class CardOptionsWidget(QGroupBox):
 
         bleed_edge_spin.valueChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
-        backside_default_button.released.connect(pick_backside)
+        backside_default_button.clicked.connect(pick_backside)
         backside_offset_spin.textChanged.connect(change_backside_offset)
 
         self._backside_default_preview = backside_default_preview
