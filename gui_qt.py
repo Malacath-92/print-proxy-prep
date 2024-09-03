@@ -275,9 +275,8 @@ class CardImage(QLabel):
 class BacksideImage(CardImage):
     def __init__(self, backside_name, img_dict):
         if backside_name in img_dict:
-            backside = image.thumbnail_name(backside_name)
-            backside_data = eval(img_dict[backside]["data"])
-            backside_size = img_dict[backside]["size"]
+            backside_data = eval(img_dict[backside_name]["data"])
+            backside_size = img_dict[backside_name]["size"]
         else:
             backside_data = fallback.data
             backside_size = fallback.size
