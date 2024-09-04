@@ -170,9 +170,9 @@ def img_draw_single_graph(window, print_dict, img_dict, card_name, has_backside)
             else print_dict["backside_default"]
         )
         if backside in img_dict:
-            backside = image.thumbnail_name(backside)
-            backside_data = eval(img_dict[backside]["data"])
-            backside_size = img_dict[backside]["size"]
+            thumb = img_dict[backside]["thumb"]
+            backside_data = eval(thumb["data"])
+            backside_size = thumb["size"]
         else:
             backside_data = fallback.data
             backside_size = fallback.size

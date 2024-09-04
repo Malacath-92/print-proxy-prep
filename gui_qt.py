@@ -775,7 +775,7 @@ class ActionsWidget(QGroupBox):
                         make_popup_print_fn(crop_window),
                     )
 
-                    for img in list_files(crop_dir):
+                    for img in image.list_image_files(crop_dir):
                         if img not in print_dict["cards"].keys():
                             print(f"{img} found and added to list.")
                             print_dict["cards"][img] = 1

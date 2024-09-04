@@ -30,24 +30,19 @@ def init():
     image.init(image_dir, crop_dir)
 
     def load_img_dict():
-        crop_list = list_files(crop_dir)
         img_dict = {}
         if os.path.exists(img_cache):
             with open(img_cache, "r") as fp:
                 img_dict = json.load(fp)
-        img_cache_needs_refresh = len(img_dict.keys()) < len(crop_list)
-        if not img_cache_needs_refresh:
-            for _, value in img_dict.items():
-                if "size" not in value:
-                    img_cache_needs_refresh = True
-                    break
-        if img_cache_needs_refresh:
+
+        if image.need_cache_previews(crop_dir, img_dict):
             print_fn = (
                 gui.make_popup_print_fn(loading_window)
                 if loading_window is not None
                 else print
             )
             image.cache_previews(img_cache, crop_dir, print_fn, img_dict)
+
         return img_dict
 
     img_dict = load_img_dict()
@@ -63,15 +58,19 @@ def init():
     )
 
     def load_print_dict():
+        # Get all image files in the crop directory
+        crop_list = image.list_image_files(crop_dir)
+
         print_dict = {}
         if os.path.exists(print_json):
             with open(print_json, "r") as fp:
                 print_dict = json.load(fp)
+
             # Check that we have all our cards accounted for
-            if len(print_dict["cards"].items()) < len(list_files(crop_dir)):
-                for img in list_files(crop_dir):
-                    if img not in print_dict["cards"].keys():
-                        print_dict["cards"][img] = 0 if img.startswith("__") else 1
+            for img in crop_list:
+                if img not in print_dict["cards"].keys():
+                    print_dict["cards"][img] = 0 if img.startswith("__") else 1
+
             # Make sure we have a sensible bleed edge
             bleed_edge = str(print_dict["bleed_edge"])
             bleed_edge = cap_bleed_edge_str(bleed_edge)
@@ -108,12 +107,12 @@ def init():
         print_dict["size"] = tuple(print_dict["size"])
 
         # Initialize the image amount
-        for img in list_files(crop_dir):
+        for img in crop_list:
             if img not in print_dict["cards"].keys():
                 print_dict["cards"][img] = 1
 
         # deselect images starting with __
-        for img in list_files(crop_dir):
+        for img in crop_list:
             print_dict["cards"][img] = (
                 0 if img.startswith("__") else print_dict["cards"][img]
             )

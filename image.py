@@ -19,6 +19,9 @@ valid_image_extensions = [
 ]
 
 
+def list_image_files(dir):
+    return list_files(dir, valid_image_extensions)
+
 def init(image_dir, crop_dir):
     for folder in [image_dir, crop_dir]:
         if not os.path.exists(folder):
@@ -61,8 +64,8 @@ def need_run_cropper(image_dir, crop_dir, bleed_edge):
     if not os.path.exists(output_dir):
         return True
 
-    input_files = list_files(image_dir, valid_image_extensions)
-    output_files = list_files(output_dir, valid_image_extensions)
+    input_files = list_image_files(image_dir)
+    output_files = list_image_files(output_dir)
     return sorted(input_files) != sorted(output_files)
 
 
@@ -95,13 +98,10 @@ def cropper(
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    needs_refresh = False
-
-    input_files = list_files(image_dir, valid_image_extensions)
+    input_files = list_image_files(image_dir)
     for img_file in input_files:
         if os.path.exists(os.path.join(output_dir, img_file)):
             continue
-        needs_refresh = True
 
         im = read_image(os.path.join(image_dir, img_file))
         (h, w, _) = im.shape
@@ -137,14 +137,13 @@ def cropper(
             crop_im = numpy.array(Image.fromarray(crop_im).filter(vibrance_cube))
         write_image(os.path.join(output_dir, img_file), crop_im)
 
-    output_files = list_files(output_dir, valid_image_extensions)
+    output_files = list_image_files(output_dir)
     for img_file in output_files:
         if not os.path.exists(os.path.join(image_dir, img_file)):
-            needs_refresh = True
             os.remove(os.path.join(output_dir, img_file))
 
-    if needs_refresh and not has_bleed_edge:
-        cache_previews(img_cache, output_dir, print_fn, img_dict)
+    if need_cache_previews(crop_dir, img_dict):
+        cache_previews(img_cache, crop_dir, print_fn, img_dict)
 
 
 def to_bytes(file_or_bytes, resize=None):
@@ -177,62 +176,90 @@ def to_bytes(file_or_bytes, resize=None):
     return bio.getvalue(), (cur_width, cur_height)
 
 
-def thumbnail_name(img):
-    return img + "_thumb"
+def need_cache_previews(crop_dir, img_dict):
+    crop_list = list_image_files(crop_dir)
+    bleed_folders = list_folders(crop_dir)
+
+    for img in crop_list:
+        if img not in img_dict.keys():
+            return True
+
+    for img, value in img_dict.items():
+        if "size" not in value or "thumb" not in value or img not in crop_list:
+            return True
+        
+        if not all([bleed_folder in value for bleed_folder in bleed_folders]):
+            return True
+    
+    return False
 
 
-def is_thumbnail_name(img):
-    return img.endswith("_thumb")
-
-
-def cache_previews(file, folder, print_fn, data):
+def cache_previews(file, crop_dir, print_fn, data):
     deleted_cards = []
     for img in data.keys():
-        if is_thumbnail_name(img):
-            continue
-        fn = os.path.join(folder, img)
+        fn = os.path.join(crop_dir, img)
         if not os.path.exists(fn):
             deleted_cards.append(img)
+
     for img in deleted_cards:
         del data[img]
 
-        img_thumbnail = thumbnail_name(img)
-        if img_thumbnail in data:
-            del data[img_thumbnail]
+    bleed_folders = list_folders(crop_dir)
 
-    for f in list_files(folder):
-        f_thumbnail = thumbnail_name(f)
-
+    for f in list_files(crop_dir, valid_image_extensions):
         has_img = f in data
-        has_size = has_img and "size" in data[f]
-        has_preview = has_img and f in data.keys()
-        has_thumbnail = has_img and f_thumbnail in data.keys()
-        need_img = not has_size or not has_preview or not has_thumbnail
-        img = read_image(os.path.join(folder, f)) if need_img else None
+        img_dict = data[f] if has_img else None 
 
-        (h, w, _) = img.shape if img is not None else (1, 1, 1)
-        scale = 248 / w
-        preview_size = (round(w * scale), round(h * scale))
+        has_size = has_img and "size" in img_dict
+        has_thumbnail = has_img and "thumb" in img_dict
+        need_img = not all([has_img, has_size, has_thumbnail])
 
-        if not has_size or not has_preview:
-            print_fn(f"Caching preview for image {f}...\n")
+        if need_img:
+            img = read_image(os.path.join(crop_dir, f))
+            (h, w, _) = img.shape
+            scale = 248 / w
+            preview_size = (round(w * scale), round(h * scale))
 
-            image_data, image_size = to_bytes(img, preview_size)
-            data[f] = {
-                "data": str(image_data),
-                "size": image_size,
-            }
+            if not has_img or not has_size:
+                print_fn(f"Caching preview for image {f}...\n")
 
-        if not has_thumbnail:
-            print_fn(f"Caching thumbnail for image {f}...\n")
+                image_data, image_size = to_bytes(img, preview_size)
+                data[f] = {
+                    "data": str(image_data),
+                    "size": image_size,
+                }
+                img_dict = data[f]
 
-            preview_data, preview_size = to_bytes(
-                img, (preview_size[0] * 0.45, preview_size[1] * 0.45)
-            )
-            data[f_thumbnail] = {
-                "data": str(preview_data),
-                "size": preview_size,
-            }
+            if not has_thumbnail:
+                print_fn(f"Caching thumbnail for image {f}...\n")
+
+                thumb_data, thumb_size = to_bytes(
+                    img, (preview_size[0] * 0.45, preview_size[1] * 0.45)
+                )
+                img_dict["thumb"] = {
+                    "data": str(thumb_data),
+                    "size": thumb_size,
+                }
+
+        has_bleeds = has_img and all([bleed_folder in img_dict for bleed_folder in bleed_folders])
+        if not has_bleeds:
+            print_fn(f"Caching bleed previews for image {f}...\n")
+
+            for bleed_folder in bleed_folders:
+                img = read_image(os.path.join(crop_dir, bleed_folder, f))
+                (h, w, _) = img.shape
+                scale = 248 / w
+                preview_size = (round(w * scale), round(h * scale))
+                
+                bleed_data, bleed_size = to_bytes(
+                    img, (preview_size[0] * 0.5, preview_size[1] * 0.5)
+                )
+                img_dict[bleed_folder] = {
+                    "data": str(bleed_data),
+                    "size": bleed_size,
+                }
+
+
 
     with open(file, "w") as fp:
         json.dump(data, fp, ensure_ascii=False)
