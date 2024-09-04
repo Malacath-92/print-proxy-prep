@@ -3,11 +3,14 @@ import json
 
 import image
 import gui_qt
+import gui_sg
 from util import *
 from constants import *
 
-
-gui = gui_qt
+if "--legacy-ui" in sys.argv:
+    gui = gui_sg
+else:
+    gui = gui_qt
 
 image_dir = os.path.join(cwd, "images")
 crop_dir = os.path.join(image_dir, "crop")
