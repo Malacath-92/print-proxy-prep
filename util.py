@@ -10,6 +10,10 @@ def list_files(folder, extensions=None):
     return files
 
 
+def list_folders(folder):
+    return [f for f in os.listdir(folder) if os.path.isdir(os.path.join(folder, f))]
+
+
 def mm_to_inch(mm):
     return mm * 0.0393701
 
@@ -62,3 +66,8 @@ def open_folder(path):
 
 def open_file(path):
     subprocess.Popen([path], shell=True)
+
+
+def is_debugger_attached():
+    gettrace = getattr(sys, "gettrace", None)
+    return gettrace is not None and gettrace() is not None

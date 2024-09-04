@@ -102,6 +102,10 @@ def popup(window, middle_text):
                 _refresh = QtCore.pyqtSignal(str)
 
                 def run(self):
+                    if is_debugger_attached():
+                        import debugpy
+                        debugpy.debug_this_thread()
+
                     work()
 
             work_thread = WorkThread()
