@@ -30,6 +30,10 @@ def inch_to_point(inch):
     return inch * 72
 
 
+def point_to_inch(point):
+    return point / 72
+
+
 def is_number_string(str):
     return str.replace(".", "", 1).isdigit()
 

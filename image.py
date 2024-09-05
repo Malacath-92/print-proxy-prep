@@ -252,7 +252,7 @@ def cache_previews(file, crop_dir, print_fn, data):
                 preview_size = (round(w * scale), round(h * scale))
                 
                 bleed_data, bleed_size = to_bytes(
-                    img, (preview_size[0] * 0.5, preview_size[1] * 0.5)
+                    img, (preview_size[0], preview_size[1])
                 )
                 img_dict[bleed_folder] = {
                     "data": str(bleed_data),

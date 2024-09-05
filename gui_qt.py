@@ -32,12 +32,12 @@ from PyQt6.QtWidgets import (
     QFrame,
     QToolTip,
     QCheckBox,
+    QTabWidget,
     QFileDialog,
 )
 
 import pdf
 import image
-import constants
 from util import *
 from constants import *
 import fallback_image as fallback
@@ -104,6 +104,7 @@ def popup(window, middle_text):
                 def run(self):
                     if is_debugger_attached():
                         import debugpy
+
                         debugpy.debug_this_thread()
 
                     work()
@@ -188,22 +189,23 @@ class LineEditWithLabel(WidgetWithLabel):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, scroll_area, options):
+    def __init__(self, tabs, scroll_area, options, print_preview):
         super().__init__()
 
         self.setWindowTitle("PDF Proxy Printer")
 
         icon = QIcon("proxy.png")
         self.setWindowIcon(icon)
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             import ctypes
-            myappid = u'proxy.printer' # arbitrary string
+
+            myappid = "proxy.printer"  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
         self.loadState()
 
         window_layout = QHBoxLayout()
-        window_layout.addWidget(scroll_area)
+        window_layout.addWidget(tabs)
         window_layout.addWidget(options)
 
         window_area = QWidget()
@@ -213,6 +215,7 @@ class MainWindow(QMainWindow):
 
         self._scroll_area = scroll_area
         self._options = options
+        self._print_preview = print_preview
 
     def close(self):
         self.saveSettings()
@@ -232,40 +235,46 @@ class MainWindow(QMainWindow):
     def refresh(self, print_dict, img_dict):
         self._scroll_area.refresh(print_dict, img_dict)
         self._options.refresh(print_dict, img_dict)
+        self._print_preview.refresh(print_dict, img_dict)
 
 
 class CardImage(QLabel):
-    def __init__(self, img_data, img_size):
+    def __init__(self, img_data, img_size, round_corners=True):
         super().__init__()
 
         raw_pixmap = QPixmap()
         raw_pixmap.loadFromData(img_data, "PNG")
 
         card_size_minimum_width_pixels = 130
-        card_corner_radius_inch = 1 / 8
-        card_corner_radius_pixels = (
-            card_corner_radius_inch * img_size[0] / card_size_without_bleed_inch[0]
-        )
 
-        clipped_pixmap = QPixmap(int(img_size[0]), int(img_size[1]))
-        clipped_pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+        if round_corners:
+            card_corner_radius_inch = 1 / 8
+            card_corner_radius_pixels = (
+                card_corner_radius_inch * img_size[0] / card_size_without_bleed_inch[0]
+            )
 
-        path = QPainterPath()
-        path.addRoundedRect(
-            QtCore.QRectF(raw_pixmap.rect()),
-            card_corner_radius_pixels,
-            card_corner_radius_pixels,
-        )
+            clipped_pixmap = QPixmap(int(img_size[0]), int(img_size[1]))
+            clipped_pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
-        painter = QPainter(clipped_pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+            path = QPainterPath()
+            path.addRoundedRect(
+                QtCore.QRectF(raw_pixmap.rect()),
+                card_corner_radius_pixels,
+                card_corner_radius_pixels,
+            )
 
-        painter.setClipPath(path)
-        painter.drawPixmap(0, 0, raw_pixmap)
-        del painter
+            painter = QPainter(clipped_pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
-        self.setPixmap(clipped_pixmap)
+            painter.setClipPath(path)
+            painter.drawPixmap(0, 0, raw_pixmap)
+            del painter
+
+            self.setPixmap(clipped_pixmap)
+        else:
+            self.setPixmap(raw_pixmap)
+
         self.setSizePolicy(
             QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
         )
@@ -643,6 +652,7 @@ class CardScrollArea(QScrollArea):
         card_area.setLayout(card_area_layout)
 
         self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidget(card_area)
 
         self.setMinimumWidth(
@@ -675,6 +685,159 @@ class CardScrollArea(QScrollArea):
         )
         self._card_grid.adjustSize()  # forces recomputing size
 
+
+class PageGrid(QWidget):
+    def __init__(self, cards, columns, rows, bleed_edge_mm, img_dict):
+        super().__init__()
+
+        grid = QGridLayout()
+        grid.setSpacing(0)
+        grid.setContentsMargins(0, 0, 0, 0)
+
+        has_bleed_edge = bleed_edge_mm > 0
+        bleed_edge_folder = str(bleed_edge_mm).replace(".", "p")
+
+        i = 0
+        for card_name in cards:
+            x, y = divmod(i, columns)
+
+            if card_name in img_dict:
+                card_img = img_dict[card_name]
+                if has_bleed_edge and bleed_edge_folder in card_img:
+                    img_data = eval(card_img[bleed_edge_folder]["data"])
+                    img_size = card_img[bleed_edge_folder]["size"]
+                else:
+                    img_data = eval(card_img["data"])
+                    img_size = card_img["size"]
+            else:
+                img_data = fallback.data
+                img_size = fallback.size
+            img = CardImage(img_data, img_size, round_corners=False)
+
+            grid.addWidget(img, x, y)
+            i = i + 1
+
+        self.setLayout(grid)
+
+        self._actual_rows = math.ceil(i / columns)
+        self._expected_rows = rows
+
+    def heightForWidth(self, width):
+        return int(width / card_ratio * (self._actual_rows / self._expected_rows))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        width = event.size().width()
+        height = self.heightForWidth(width)
+        self.setFixedHeight(height)
+
+
+class PagePreview(QWidget):
+    def __init__(self, cards, columns, rows, bleed_edge_mm, img_dict, page_size):
+        super().__init__()
+
+        grid = PageGrid(cards, columns, rows, bleed_edge_mm, img_dict)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(grid)
+        layout.setAlignment(grid, QtCore.Qt.AlignmentFlag.AlignTop)
+
+        self.setLayout(layout)
+
+        palette = self.palette()
+        palette.setColor(self.backgroundRole(), 0xffffff)
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+
+        (page_width, page_height) = page_size
+        self._page_ratio = page_width / page_height
+        self._page_width = page_width
+        self._page_height = page_height
+
+        bleed_edge = mm_to_inch(bleed_edge_mm)
+        (card_width, card_height) = (
+            v + 2 * bleed_edge for v in card_size_without_bleed_inch
+        )
+        self._card_width = card_width
+        self._card_height = card_height
+
+        self._padding_width = (page_width - columns * card_width) / 2
+        self._padding_height = (page_height - rows * card_height) / 2
+
+    def heightForWidth(self, width):
+        return int(width / self._page_ratio)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        width = event.size().width()
+        height = self.heightForWidth(width)
+        self.setFixedHeight(height)
+
+        padding_width_pixels = int(
+            self._padding_width
+            * width
+            / self._page_width
+        )
+        padding_height_pixels = int(
+            self._padding_height
+            * height
+            / self._page_height
+        )
+        self.setContentsMargins(padding_width_pixels, padding_height_pixels, padding_width_pixels, padding_height_pixels)
+
+
+class PrintPreview(QScrollArea):
+    def __init__(self, print_dict, img_dict):
+        super().__init__()
+
+        self.refresh(print_dict, img_dict)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def refresh(self, print_dict, img_dict):
+        bleed_edge = float(print_dict["bleed_edge"])
+        bleed_edge_inch = mm_to_inch(bleed_edge)
+
+        page_size = page_sizes[print_dict["pagesize"]]
+        if print_dict["orient"] == "Landscape":
+            page_size = tuple(page_size[::-1])
+        page_size = tuple(point_to_inch(p) for p in page_size)
+        (page_width, page_height) = page_size
+
+        (card_width, card_height) = card_size_without_bleed_inch
+        card_width = card_width + 2 * bleed_edge_inch
+        card_height = card_height + 2 * bleed_edge_inch
+
+        columns = int(page_width // card_width)
+        rows = int(page_height // card_height)
+        images_per_page = columns * rows
+
+        images = []
+        for img, num in print_dict["cards"].items():
+            images.extend([img] * num)
+        images = [
+            images[i : i + images_per_page]
+            for i in range(0, len(images), images_per_page)
+        ]
+
+        pages = [
+            PagePreview(cards, columns, rows, bleed_edge, img_dict, page_size)
+            for cards in images
+        ]
+
+        layout = QVBoxLayout()
+        for page in pages:
+            layout.addWidget(page)
+        layout.setSpacing(15)
+        layout.setContentsMargins(60, 20, 60, 20)
+        pages_widget = QWidget()
+        pages_widget.setLayout(layout)
+
+        self.setWidget(pages_widget)
 
 class ActionsWidget(QGroupBox):
     def __init__(
@@ -1089,11 +1252,17 @@ def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cach
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(print_dict, card_grid)
 
+    print_preview = PrintPreview(print_dict, img_dict)
+
+    tabs = QTabWidget()
+    tabs.addTab(scroll_area, "Cards")
+    tabs.addTab(print_preview, "Preview")
+
     options = OptionsWidget(
         image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
     )
 
-    window = MainWindow(scroll_area, options)
+    window = MainWindow(tabs, scroll_area, options, print_preview)
     window.show()
     return window
 
