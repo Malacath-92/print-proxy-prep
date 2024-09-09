@@ -1252,15 +1252,27 @@ class OptionsWidget(QWidget):
         self._card_options.refresh(print_dict, img_dict)
 
 
+class CardTabs(QTabWidget):
+    def __init__(self, print_dict, img_dict, scroll_area, print_preview):
+        super().__init__()
+
+        self.addTab(scroll_area, "Cards")
+        self.addTab(print_preview, "Preview")
+
+        def current_changed(i):
+            if i == 1:
+                print_preview.refresh(print_dict, img_dict)
+
+        self.currentChanged.connect(current_changed)
+
+
 def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(print_dict, card_grid)
 
     print_preview = PrintPreview(print_dict, img_dict)
 
-    tabs = QTabWidget()
-    tabs.addTab(scroll_area, "Cards")
-    tabs.addTab(print_preview, "Preview")
+    tabs = CardTabs(print_dict, img_dict, scroll_area, print_preview)
 
     options = OptionsWidget(
         image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
