@@ -748,7 +748,7 @@ class PagePreview(QWidget):
         self.setLayout(layout)
 
         palette = self.palette()
-        palette.setColor(self.backgroundRole(), 0xffffff)
+        palette.setColor(self.backgroundRole(), 0xFFFFFF)
         self.setPalette(palette)
         self.setAutoFillBackground(True)
 
@@ -777,17 +777,14 @@ class PagePreview(QWidget):
         height = self.heightForWidth(width)
         self.setFixedHeight(height)
 
-        padding_width_pixels = int(
-            self._padding_width
-            * width
-            / self._page_width
+        padding_width_pixels = int(self._padding_width * width / self._page_width)
+        padding_height_pixels = int(self._padding_height * height / self._page_height)
+        self.setContentsMargins(
+            padding_width_pixels,
+            padding_height_pixels,
+            padding_width_pixels,
+            padding_height_pixels,
         )
-        padding_height_pixels = int(
-            self._padding_height
-            * height
-            / self._page_height
-        )
-        self.setContentsMargins(padding_width_pixels, padding_height_pixels, padding_width_pixels, padding_height_pixels)
 
 
 class PrintPreview(QScrollArea):
@@ -838,6 +835,7 @@ class PrintPreview(QScrollArea):
         pages_widget.setLayout(layout)
 
         self.setWidget(pages_widget)
+
 
 class ActionsWidget(QGroupBox):
     def __init__(
@@ -996,11 +994,18 @@ class PrintOptionsWidget(QGroupBox):
         orientation = ComboBoxWithLabel(
             "&Orientation", ["Landscape", "Portrait"], print_dict["orient"]
         )
+        guides_checkbox = QCheckBox("Extended Guides")
+        guides_checkbox.setCheckState(
+            QtCore.Qt.CheckState.Checked
+            if print_dict["extended_guides"]
+            else QtCore.Qt.CheckState.Unchecked
+        )
 
         layout = QVBoxLayout()
         layout.addWidget(print_output)
         layout.addWidget(paper_sizes)
         layout.addWidget(orientation)
+        layout.addWidget(guides_checkbox)
 
         self.setLayout(layout)
 
@@ -1013,9 +1018,14 @@ class PrintOptionsWidget(QGroupBox):
         def change_orientation(t):
             print_dict["orient"] = t
 
+        def change_guides(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            print_dict["extended_guides"] = enabled
+
         print_output._widget.textChanged.connect(change_output)
         paper_sizes._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
+        guides_checkbox.stateChanged.connect(change_guides)
 
 
 class BacksidePreview(QWidget):
@@ -1065,9 +1075,7 @@ class CardOptionsWidget(QGroupBox):
         bleed_edge_spin.setRange(0, inch_to_mm(0.12))
         bleed_edge_spin.setSingleStep(0.1)
         bleed_edge_spin.setSuffix("mm")
-        bleed_edge_spin.setValue(
-            bleed_edge_spin.valueFromText(print_dict["bleed_edge"].replace(".", ","))
-        )
+        bleed_edge_spin.setValue(float(print_dict["bleed_edge"]))
         bleed_edge = WidgetWithLabel("&Bleed Edge", bleed_edge_spin)
 
         divider = QFrame()
@@ -1091,11 +1099,7 @@ class CardOptionsWidget(QGroupBox):
         backside_offset_spin.setRange(-inch_to_mm(0.3), inch_to_mm(0.3))
         backside_offset_spin.setSingleStep(0.1)
         backside_offset_spin.setSuffix("mm")
-        backside_offset_spin.setValue(
-            backside_offset_spin.valueFromText(
-                print_dict["backside_offset"].replace(".", ",")
-            )
-        )
+        backside_offset_spin.setValue(float(print_dict["backside_offset"]))
         backside_offset = WidgetWithLabel("Off&set", backside_offset_spin)
 
         backside_default_button.setEnabled(backside_enabled)
@@ -1135,13 +1139,13 @@ class CardOptionsWidget(QGroupBox):
                 )
                 self.window().refresh(print_dict, img_dict)
 
-        def change_backside_offset(t):
-            print_dict["backside_offset"] = t.replace(",", ".")
+        def change_backside_offset(v):
+            print_dict["backside_offset"] = v
 
         bleed_edge_spin.valueChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
         backside_default_button.clicked.connect(pick_backside)
-        backside_offset_spin.textChanged.connect(change_backside_offset)
+        backside_offset_spin.valueChanged.connect(change_backside_offset)
 
         self._backside_default_preview = backside_default_preview
 

@@ -1,35 +1,33 @@
-import re
-import subprocess
-
 from reportlab.pdfgen import canvas
 
 from util import *
 from constants import *
 
 
-# Draws black-white dashed cross at `x`, `y`
-def draw_cross(can, x, y, c=6, s=1):
+def draw_line(can, fx, fy, tx, ty, s=1):
     dash = [s, s]
     can.setLineWidth(s)
 
     # First layer
     can.setDash(dash)
-    can.setStrokeColorRGB(255, 255, 255)
-    can.line(x, y - c, x, y + c)
-    can.setStrokeColorRGB(0, 0, 0)
-    can.line(x - c, y, x + c, y)
+    can.setStrokeColorRGB(0.75, 0.75, 0.75)
+    can.line(fx, fy, tx, ty)
 
     # Second layer with phase offset
     can.setDash(dash, s)
     can.setStrokeColorRGB(0, 0, 0)
-    can.line(x, y - c, x, y + c)
-    can.setStrokeColorRGB(255, 255, 255)
-    can.line(x - c, y, x + c, y)
+    can.line(fx, fy, tx, ty)
+
+
+# Draws black-white dashed cross at `(x, y)`, with a width of `c`, and a thickness of `s`
+def draw_cross(can, x, y, c=6, s=1):
+    draw_line(can, x, y - c, x, y + c, s)
+    draw_line(can, x - c, y, x + c, y, s)
 
 
 def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     has_backside = print_dict["backside_enabled"]
-    backside_offset = mm_to_point(float(print_dict["backside_offset"]))
+    backside_offset = 0
     bleed_edge = float(print_dict["bleed_edge"])
     has_bleed_edge = bleed_edge > 0
     if has_bleed_edge:
@@ -47,7 +45,7 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     pages = canvas.Canvas(pdf_path, pagesize=size)
     cols, rows = int(pw // w), int(ph // h)
     rx, ry = round((pw - (w * cols)) / 2), round((ph - (h * rows)) / 2)
-    ry = ph - ry - h
+    ry = ph - ry
     images_per_page = cols * rows
 
     images_dict = print_dict["cards"]
@@ -57,6 +55,8 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     images = [
         images[i : i + images_per_page] for i in range(0, len(images), images_per_page)
     ]
+
+    extended_guides = print_dict["extended_guides"]
 
     for p, page_images in enumerate(images):
         render_fmt = "Rendering page {page}...\nImage number {img_idx} - {img_name}"
@@ -74,11 +74,25 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
             if os.path.exists(img_path):
                 pages.drawImage(
                     img_path,
-                    x * w + rx + dx,
-                    ry - y * h + dy,
+                    rx + x * w + dx,
+                    ry - y * h + dy - h,
                     w,
                     h,
                 )
+
+        def draw_cross_at_grid(ix, iy, dx=0.0, dy=0.0):
+            x = rx + ix * w + dx
+            y = ry - iy * h + dy
+            draw_cross(pages, x, y)
+            if extended_guides:
+                if ix == 0:
+                    draw_line(pages, x, y, 0, y)
+                if ix == cols:
+                    draw_line(pages, x, y, pw, y)
+                if iy == 0:
+                    draw_line(pages, x, y, x, ph)
+                if iy == rows:
+                    draw_line(pages, x, y, x, 0)
 
         # Draw front-sides
         for i, img in enumerate(page_images):
@@ -87,16 +101,16 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
 
             # Draw lines per image
             if has_bleed_edge:
-                draw_cross(pages, (x + 0) * w + b + rx, ry - (y + 0) * h + b)
-                draw_cross(pages, (x + 1) * w - b + rx, ry - (y + 0) * h + b)
-                draw_cross(pages, (x + 1) * w - b + rx, ry - (y - 1) * h - b)
-                draw_cross(pages, (x + 0) * w + b + rx, ry - (y - 1) * h - b)
+                draw_cross_at_grid(x + 0, y + 0, +b, -b)
+                draw_cross_at_grid(x + 1, y + 0, -b, -b)
+                draw_cross_at_grid(x + 1, y + 1, -b, +b)
+                draw_cross_at_grid(x + 0, y + 1, +b, +b)
 
         # Draw lines for whole page
         if not has_bleed_edge:
-            for cy in range(rows + 1):
-                for cx in range(cols + 1):
-                    draw_cross(pages, rx + w * cx, ry - h * (cy - 1))
+            for y in range(rows + 1):
+                for x in range(cols + 1):
+                    draw_cross_at_grid(x, y)
 
         # Next page
         pages.showPage()

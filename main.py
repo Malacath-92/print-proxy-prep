@@ -93,6 +93,7 @@ def init():
             "pagesize": (
                 default_page_size if default_page_size in page_sizes else "Letter"
             ),
+            "extended_guides": True,
             "orient": "Portrait",
             "bleed_edge": "0",
             "filename": "_printme",

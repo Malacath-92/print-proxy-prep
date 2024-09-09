@@ -504,7 +504,7 @@ def event_loop(
                 json.dump(print_dict, fp)
 
         if event in ["CROP", "RENDER"]:
-            constants.CFG = load_config("config.ini")
+            constants.CFG = load_config()
 
         if "CROP" in event:
             bleed_edge = float(print_dict["bleed_edge"])
@@ -512,7 +512,7 @@ def event_loop(
                 window.disable()
                 grey_window = grey_out(window)
 
-                crop_window = popup("Rendering...")
+                crop_window = popup(None, "Rendering...")
                 crop_window.refresh()
                 image.cropper(
                     image_dir,
@@ -567,7 +567,7 @@ def event_loop(
             window.disable()
             grey_window = grey_out(window)
 
-            render_window = popup("Rendering...")
+            render_window = popup(None, "Rendering...")
             render_window.refresh()
             pages = pdf.generate(
                 print_dict,
@@ -578,7 +578,7 @@ def event_loop(
             )
             render_window.close()
 
-            saving_window = popup("Saving...")
+            saving_window = popup(None, "Saving...")
             saving_window.refresh()
             pages.save()
             saving_window.close()
