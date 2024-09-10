@@ -22,6 +22,7 @@ valid_image_extensions = [
 def list_image_files(dir):
     return list_files(dir, valid_image_extensions)
 
+
 def init(image_dir, crop_dir):
     for folder in [image_dir, crop_dir]:
         if not os.path.exists(folder):
@@ -69,6 +70,43 @@ def need_run_cropper(image_dir, crop_dir, bleed_edge):
     return sorted(input_files) != sorted(output_files)
 
 
+def crop_image(image, image_name, bleed_edge, max_dpi, print_fn=None):
+    print_fn = print_fn if print_fn is not None else lambda *args: args
+
+    (h, w, _) = image.shape
+    (bw, bh) = card_size_with_bleed_inch
+    c = round(0.12 * min(w / bw, h / bh))
+    dpi = c * (1 / 0.12)
+    if bleed_edge > 0:
+        bleed_edge_inch = mm_to_inch(bleed_edge)
+        bleed_edge_pixel = dpi * bleed_edge_inch
+        c = round(0.12 * min(w / bw, h / bh) - bleed_edge_pixel)
+        print_fn(
+            f"Cropping images...\n{image_name} - DPI calculated: {dpi}, cropping {c} pixels around frame (adjusted for bleed edge {bleed_edge}mm)"
+        )
+    else:
+        print_fn(
+            f"Cropping images...\n{image_name} - DPI calculated: {dpi}, cropping {c} pixels around frame"
+        )
+    cropped_image = image[c : h - c, c : w - c]
+    (h, w, _) = cropped_image.shape
+    if max_dpi is not None and dpi > max_dpi:
+        new_size = (
+            int(round(w * max_dpi / dpi)),
+            int(round(h * max_dpi / dpi)),
+        )
+        print_fn(
+            f"Cropping images...\n{image_name} - Exceeds maximum DPI {max_dpi}, resizing to {new_size[0]}x{new_size[1]}"
+        )
+        cropped_image = cv2.resize(
+            cropped_image, new_size, interpolation=cv2.INTER_CUBIC
+        )
+        cropped_image = numpy.array(
+            Image.fromarray(cropped_image).filter(ImageFilter.UnsharpMask(1, 20, 8))
+        )
+    return cropped_image
+
+
 def cropper(
     image_dir,
     crop_dir,
@@ -103,39 +141,13 @@ def cropper(
         if os.path.exists(os.path.join(output_dir, img_file)):
             continue
 
-        im = read_image(os.path.join(image_dir, img_file))
-        (h, w, _) = im.shape
-        (bw, bh) = card_size_with_bleed_inch
-        c = round(0.12 * min(w / bw, h / bh))
-        dpi = c * (1 / 0.12)
-        if has_bleed_edge:
-            bleed_edge_inch = mm_to_inch(bleed_edge)
-            bleed_edge_pixel = dpi * bleed_edge_inch
-            c = round(0.12 * min(w / bw, h / bh) - bleed_edge_pixel)
-            print_fn(
-                f"Cropping images...\n{img_file} - DPI calculated: {dpi}, cropping {c} pixels around frame (adjusted for bleed edge)"
-            )
-        else:
-            print_fn(
-                f"Cropping images...\n{img_file} - DPI calculated: {dpi}, cropping {c} pixels around frame"
-            )
-        crop_im = im[c : h - c, c : w - c]
-        (h, w, _) = crop_im.shape
-        if dpi > max_dpi:
-            new_size = (
-                int(round(w * max_dpi / dpi)),
-                int(round(h * max_dpi / dpi)),
-            )
-            print_fn(
-                f"Cropping images...\n{img_file} - Exceeds maximum DPI {max_dpi}, resizing to {new_size[0]}x{new_size[1]}"
-            )
-            crop_im = cv2.resize(crop_im, new_size, interpolation=cv2.INTER_CUBIC)
-            crop_im = numpy.array(
-                Image.fromarray(crop_im).filter(ImageFilter.UnsharpMask(1, 20, 8))
-            )
+        image = read_image(os.path.join(image_dir, img_file))
+        cropped_image = crop_image(image, img_file, bleed_edge, max_dpi, print_fn)
         if do_vibrance_bump:
-            crop_im = numpy.array(Image.fromarray(crop_im).filter(vibrance_cube))
-        write_image(os.path.join(output_dir, img_file), crop_im)
+            cropped_image = numpy.array(
+                Image.fromarray(cropped_image).filter(vibrance_cube)
+            )
+        write_image(os.path.join(output_dir, img_file), cropped_image)
 
     output_files = list_image_files(output_dir)
     for img_file in output_files:
@@ -143,7 +155,21 @@ def cropper(
             os.remove(os.path.join(output_dir, img_file))
 
     if need_cache_previews(crop_dir, img_dict):
-        cache_previews(img_cache, crop_dir, print_fn, img_dict)
+        cache_previews(img_cache, image_dir, crop_dir, print_fn, img_dict)
+
+
+def image_from_bytes(bytes):
+    try:
+        dataBytesIO = io.BytesIO(base64.b64decode(bytes))
+        buffer = dataBytesIO.getbuffer()
+        img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
+    except Exception as e:
+        pass
+    if img is None:
+        dataBytesIO = io.BytesIO(bytes)
+        buffer = dataBytesIO.getbuffer()
+        img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
+    return img
 
 
 def to_bytes(file_or_bytes, resize=None):
@@ -152,14 +178,7 @@ def to_bytes(file_or_bytes, resize=None):
     elif isinstance(file_or_bytes, str):
         img = read_image(file_or_bytes)
     else:
-        try:
-            dataBytesIO = io.BytesIO(base64.b64decode(file_or_bytes))
-            buffer = dataBytesIO.getbuffer()
-            img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
-        except Exception as e:
-            dataBytesIO = io.BytesIO(file_or_bytes)
-            buffer = dataBytesIO.getbuffer()
-            img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
+        img = image_from_bytes(file_or_bytes)
 
     (cur_height, cur_width, _) = img.shape
     if resize:
@@ -178,23 +197,24 @@ def to_bytes(file_or_bytes, resize=None):
 
 def need_cache_previews(crop_dir, img_dict):
     crop_list = list_image_files(crop_dir)
-    bleed_folders = list_folders(crop_dir)
 
     for img in crop_list:
         if img not in img_dict.keys():
             return True
 
     for img, value in img_dict.items():
-        if "size" not in value or "thumb" not in value or img not in crop_list:
+        if (
+            "size" not in value
+            or "thumb" not in value
+            or "uncropped" not in value
+            or img not in crop_list
+        ):
             return True
-        
-        if not all([bleed_folder in value for bleed_folder in bleed_folders]):
-            return True
-    
+
     return False
 
 
-def cache_previews(file, crop_dir, print_fn, data):
+def cache_previews(file, image_dir, crop_dir, print_fn, data):
     deleted_cards = []
     for img in data.keys():
         fn = os.path.join(crop_dir, img)
@@ -204,11 +224,9 @@ def cache_previews(file, crop_dir, print_fn, data):
     for img in deleted_cards:
         del data[img]
 
-    bleed_folders = list_folders(crop_dir)
-
     for f in list_files(crop_dir, valid_image_extensions):
         has_img = f in data
-        img_dict = data[f] if has_img else None 
+        img_dict = data[f] if has_img else None
 
         has_size = has_img and "size" in img_dict
         has_thumbnail = has_img and "thumb" in img_dict
@@ -241,25 +259,24 @@ def cache_previews(file, crop_dir, print_fn, data):
                     "size": thumb_size,
                 }
 
-        has_bleeds = has_img and all([bleed_folder in img_dict for bleed_folder in bleed_folders])
-        if not has_bleeds:
-            print_fn(f"Caching bleed previews for image {f}...\n")
-
-            for bleed_folder in bleed_folders:
-                img = read_image(os.path.join(crop_dir, bleed_folder, f))
+    for f in list_files(image_dir, valid_image_extensions):
+        if f in data:
+            img_dict = data[f]
+            has_img = "uncropped" in img_dict
+            if not has_img:
+                img = read_image(os.path.join(image_dir, f))
                 (h, w, _) = img.shape
-                scale = 248 / w
-                preview_size = (round(w * scale), round(h * scale))
-                
-                bleed_data, bleed_size = to_bytes(
-                    img, (preview_size[0], preview_size[1])
-                )
-                img_dict[bleed_folder] = {
-                    "data": str(bleed_data),
-                    "size": bleed_size,
-                }
+                scale = 186 / w
+                uncropped_size = (round(w * scale), round(h * scale))
 
+                if not has_img or not has_size:
+                    print_fn(f"Caching uncropped preview for image {f}...\n")
 
+                    image_data, image_size = to_bytes(img, uncropped_size)
+                    img_dict["uncropped"] = {
+                        "data": str(image_data),
+                        "size": image_size,
+                    }
 
     with open(file, "w") as fp:
         json.dump(data, fp, ensure_ascii=False)

@@ -235,6 +235,9 @@ class MainWindow(QMainWindow):
     def refresh(self, print_dict, img_dict):
         self._scroll_area.refresh(print_dict, img_dict)
         self._options.refresh(print_dict, img_dict)
+        self.refresh_preview(print_dict, img_dict)
+
+    def refresh_preview(self, print_dict, img_dict):
         self._print_preview.refresh(print_dict, img_dict)
 
 
@@ -687,7 +690,7 @@ class CardScrollArea(QScrollArea):
 
 
 class PageGrid(QWidget):
-    def __init__(self, cards, columns, rows, bleed_edge_mm, img_dict):
+    def __init__(self, cards, columns, rows, bleed_edge_mm, img_get):
         super().__init__()
 
         grid = QGridLayout()
@@ -695,23 +698,17 @@ class PageGrid(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
 
         has_bleed_edge = bleed_edge_mm > 0
-        bleed_edge_folder = str(bleed_edge_mm).replace(".", "p")
+
+        has_missing_preview = False
 
         i = 0
         for card_name in cards:
             x, y = divmod(i, columns)
 
-            if card_name in img_dict:
-                card_img = img_dict[card_name]
-                if has_bleed_edge and bleed_edge_folder in card_img:
-                    img_data = eval(card_img[bleed_edge_folder]["data"])
-                    img_size = card_img[bleed_edge_folder]["size"]
-                else:
-                    img_data = eval(card_img["data"])
-                    img_size = card_img["size"]
-            else:
-                img_data = fallback.data
-                img_size = fallback.size
+            img_data, img_size = img_get(card_name, bleed_edge_mm)
+            if img_data is None:
+                img_data, img_size = fallback.data, fallback.size
+                has_missing_preview = True
             img = CardImage(img_data, img_size, round_corners=False)
 
             grid.addWidget(img, x, y)
@@ -719,11 +716,18 @@ class PageGrid(QWidget):
 
         self.setLayout(grid)
 
+        self._rows = math.ceil(i / columns)
+        self._cols = min(columns, i)
+
         self._actual_rows = math.ceil(i / columns)
         self._expected_rows = rows
+        self._has_missing_preview = has_missing_preview
+
+    def hasMissingPreviews(self):
+        return self._has_missing_preview
 
     def heightForWidth(self, width):
-        return int(width / card_ratio * (self._actual_rows / self._expected_rows))
+        return int(width / card_ratio * (self._rows / self._cols))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -734,10 +738,10 @@ class PageGrid(QWidget):
 
 
 class PagePreview(QWidget):
-    def __init__(self, cards, columns, rows, bleed_edge_mm, img_dict, page_size):
+    def __init__(self, cards, columns, rows, bleed_edge_mm, page_size, img_get):
         super().__init__()
 
-        grid = PageGrid(cards, columns, rows, bleed_edge_mm, img_dict)
+        grid = PageGrid(cards, columns, rows, bleed_edge_mm, img_get)
 
         layout = QVBoxLayout()
         layout.setSpacing(0)
@@ -766,6 +770,11 @@ class PagePreview(QWidget):
 
         self._padding_width = (page_width - columns * card_width) / 2
         self._padding_height = (page_height - rows * card_height) / 2
+
+        self._grid = grid
+
+    def hasMissingPreviews(self):
+        return self._grid.hasMissingPreviews()
 
     def heightForWidth(self, width):
         return int(width / self._page_ratio)
@@ -821,12 +830,47 @@ class PrintPreview(QScrollArea):
             for i in range(0, len(images), images_per_page)
         ]
 
+        @functools.cache
+        def img_get(card_name, bleed_edge):
+            if card_name in img_dict:
+                card_img = img_dict[card_name]
+                if bleed_edge > 0 and "uncropped" in card_img:
+                    uncropped_data = eval(card_img["uncropped"]["data"])
+                    img = image.image_from_bytes(uncropped_data)
+                    img_crop = image.crop_image(img, "", bleed_edge, None)
+                    img_data, img_size = image.to_bytes(img_crop)
+                else:
+                    img_data = eval(card_img["data"])
+                    img_size = card_img["size"]
+                return img_data, img_size
+            else:
+                return None, None
+
+        img_get.cache_clear()
+
         pages = [
-            PagePreview(cards, columns, rows, bleed_edge, img_dict, page_size)
+            PagePreview(cards, columns, rows, bleed_edge, page_size, img_get)
             for cards in images
         ]
 
+        has_missing_previews = any([p.hasMissingPreviews() for p in pages])
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.addWidget(
+            QLabel("Only a preview; Quality is lower than final render")
+        )
+        if has_missing_previews:
+            bleed_info = QLabel(
+                "Bleed edge is incorrect; Run cropper for more accurate preview"
+            )
+            bleed_info.setStyleSheet("QLabel { color : red; }")
+            header_layout.addWidget(bleed_info)
+
+        header = QWidget()
+        header.setLayout(header_layout)
+
         layout = QVBoxLayout()
+        layout.addWidget(header)
         for page in pages:
             layout.addWidget(page)
         layout.setSpacing(15)
@@ -957,6 +1001,8 @@ class ActionsWidget(QGroupBox):
                 del crop_window
                 if self._rebuild_after_cropper:
                     self.window().refresh(print_dict, img_dict)
+                else:
+                    self.window().refresh_preview(print_dict, img_dict)
                 self.window().setEnabled(True)
             else:
                 QToolTip.showText(
@@ -982,7 +1028,7 @@ class ActionsWidget(QGroupBox):
 
 
 class PrintOptionsWidget(QGroupBox):
-    def __init__(self, print_dict):
+    def __init__(self, print_dict, img_dict):
         super().__init__()
 
         self.setTitle("Print Options")
@@ -1014,9 +1060,11 @@ class PrintOptionsWidget(QGroupBox):
 
         def change_papersize(t):
             print_dict["pagesize"] = t
+            self.window().refresh_preview(print_dict, img_dict)
 
         def change_orientation(t):
             print_dict["orient"] = t
+            self.window().refresh_preview(print_dict, img_dict)
 
         def change_guides(s):
             enabled = s == QtCore.Qt.CheckState.Checked
@@ -1122,6 +1170,7 @@ class CardOptionsWidget(QGroupBox):
 
         def change_bleed_edge(v):
             print_dict["bleed_edge"] = v
+            self.window().refresh_preview(print_dict, img_dict)
 
         def switch_default_backside(s):
             enabled = s == QtCore.Qt.CheckState.Checked
@@ -1141,6 +1190,7 @@ class CardOptionsWidget(QGroupBox):
 
         def change_backside_offset(v):
             print_dict["backside_offset"] = v
+            self.window().refresh_preview(print_dict, img_dict)
 
         bleed_edge_spin.valueChanged.connect(change_bleed_edge)
         backside_checkbox.checkStateChanged.connect(switch_default_backside)
@@ -1232,7 +1282,7 @@ class OptionsWidget(QWidget):
             img_dict,
             img_cache,
         )
-        print_options = PrintOptionsWidget(print_dict)
+        print_options = PrintOptionsWidget(print_dict, img_dict)
         card_options = CardOptionsWidget(print_dict, img_dict)
         global_options = GlobalOptionsWidget(crop_dir, img_cache)
 

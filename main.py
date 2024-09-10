@@ -41,7 +41,7 @@ def init():
                 if loading_window is not None
                 else print
             )
-            image.cache_previews(img_cache, crop_dir, print_fn, img_dict)
+            image.cache_previews(img_cache, image_dir, crop_dir, print_fn, img_dict)
 
         return img_dict
 
