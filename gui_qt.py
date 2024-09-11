@@ -690,20 +690,21 @@ class CardScrollArea(QScrollArea):
 
 
 class PageGrid(QWidget):
-    def __init__(self, cards, columns, rows, bleed_edge_mm, img_get):
+    def __init__(self, cards, left_to_right, columns, rows, bleed_edge_mm, img_get):
         super().__init__()
 
         grid = QGridLayout()
         grid.setSpacing(0)
         grid.setContentsMargins(0, 0, 0, 0)
 
-        has_bleed_edge = bleed_edge_mm > 0
-
+        rows = math.ceil(len(cards) / columns)
         has_missing_preview = False
 
         i = 0
         for card_name in cards:
             x, y = divmod(i, columns)
+            if not left_to_right:
+                y = rows - y + 1
 
             img_data, img_size = img_get(card_name, bleed_edge_mm)
             if img_data is None:
@@ -716,7 +717,7 @@ class PageGrid(QWidget):
 
         self.setLayout(grid)
 
-        self._rows = math.ceil(i / columns)
+        self._rows = rows
         self._cols = min(columns, i)
 
         self._actual_rows = math.ceil(i / columns)
@@ -738,10 +739,12 @@ class PageGrid(QWidget):
 
 
 class PagePreview(QWidget):
-    def __init__(self, cards, columns, rows, bleed_edge_mm, page_size, img_get):
+    def __init__(
+        self, cards, left_to_right, columns, rows, bleed_edge_mm, page_size, img_get
+    ):
         super().__init__()
 
-        grid = PageGrid(cards, columns, rows, bleed_edge_mm, img_get)
+        grid = PageGrid(cards, left_to_right, columns, rows, bleed_edge_mm, img_get)
 
         layout = QVBoxLayout()
         layout.setSpacing(0)
@@ -825,10 +828,26 @@ class PrintPreview(QScrollArea):
         images = []
         for img, num in print_dict["cards"].items():
             images.extend([img] * num)
-        images = [
-            images[i : i + images_per_page]
+        pages = [
+            {"cards": images[i : i + images_per_page], "left_to_right": True}
             for i in range(0, len(images), images_per_page)
         ]
+
+        if print_dict["backside_enabled"]:
+            back_dict = print_dict["backsides"]
+            backsides = []
+            for img, num in print_dict["cards"].items():
+                backside = (
+                    back_dict[img]
+                    if img in back_dict
+                    else print_dict["backside_default"]
+                )
+                backsides.extend([backside] * num)
+            backside_pages = [
+                {"cards": backsides[i : i + images_per_page], "left_to_right": False}
+                for i in range(0, len(backsides), images_per_page)
+            ]
+            pages = [imgs for pair in zip(pages, backside_pages) for imgs in pair]
 
         @functools.cache
         def img_get(card_name, bleed_edge):
@@ -849,8 +868,8 @@ class PrintPreview(QScrollArea):
         img_get.cache_clear()
 
         pages = [
-            PagePreview(cards, columns, rows, bleed_edge, page_size, img_get)
-            for cards in images
+            PagePreview(page["cards"], page["left_to_right"], columns, rows, bleed_edge, page_size, img_get)
+            for page in pages
         ]
 
         has_missing_previews = any([p.hasMissingPreviews() for p in pages])
