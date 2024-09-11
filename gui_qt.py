@@ -658,9 +658,6 @@ class CardScrollArea(QScrollArea):
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidget(card_area)
 
-        self.setMinimumWidth(
-            card_grid.minimumWidth() + self.verticalScrollBar().width()
-        )
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         def dec_number():
@@ -680,12 +677,18 @@ class CardScrollArea(QScrollArea):
         global_set_zero_button.clicked.connect(reset_number)
 
         self._card_grid = card_grid
+    
+    def computeMinimumWidth(self):
+        margins = self.widget().layout().contentsMargins()
+        return self._card_grid.minimumWidth() + self.verticalScrollBar().width() + margins.left() + margins.right()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.setMinimumWidth(self.computeMinimumWidth())
 
     def refresh(self, print_dict, img_dict):
         self._card_grid.refresh(print_dict, img_dict)
-        self.setMinimumWidth(
-            self._card_grid.minimumWidth() + self.verticalScrollBar().width()
-        )
+        self.setMinimumWidth(self.computeMinimumWidth())
         self._card_grid.adjustSize()  # forces recomputing size
 
 
