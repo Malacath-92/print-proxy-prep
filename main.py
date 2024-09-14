@@ -16,6 +16,7 @@ from reportlab.lib.pagesizes import letter, A4, A3, legal
 
 sg.theme("DarkTeal2")
 
+stroke_enabled = True
 
 def popup(middle_text):
     wnd = sg.Window(
@@ -169,6 +170,8 @@ def write_image(path, image):
 
 # Draws black-white dashed cross at `x`, `y`
 def draw_cross(can, x, y, c=6, s=1):
+    if not print_dict["stroke_enabled"]:
+        return
     dash = [s, s]
     can.setLineWidth(s)
 
@@ -598,6 +601,11 @@ def window_setup(cols):
         ],
         [
             sg.Checkbox(
+                "Stroke",
+                key="ENABLE_STROKE",
+                default=print_dict["stroke_enabled"],
+            ),
+            sg.Checkbox(
                 "Backside",
                 key="ENABLE_BACKSIDE",
                 default=print_dict["backside_enabled"],
@@ -708,6 +716,12 @@ def window_setup(cols):
 
     window["BLEED"].TKStringVar.trace("w", bleed_callback)
 
+    def enable_stroke_callback(var, index, mode):
+        stroke_enabled = window["ENABLE_STROKE"].TKIntVar.get() != 0
+        print_dict["stroke_enabled"] = stroke_enabled
+        
+    window["ENABLE_STROKE"].TKIntVar.trace("w", enable_stroke_callback)
+
     def enable_backside_callback(var, index, mode):
         default_backside_button = window["DEFAULT_BACKSIDE"]
         offset_backside_button = window["OFFSET_BACKSIDE"]
@@ -794,6 +808,8 @@ def load_print_dict():
         # program window settings
         "size": (None, None),
         "columns": 5,
+        # stroke options
+        "stroke_enabled": True,
         # backside options
         "backside_enabled": False,
         "backside_default": "__back.png",
