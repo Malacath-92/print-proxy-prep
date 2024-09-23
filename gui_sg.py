@@ -522,6 +522,7 @@ def event_loop(
                     bleed_edge,
                     constants.CFG.MaxDPI,
                     constants.CFG.VibranceBump,
+                    constants.CFG.EnableUncrop,
                     make_popup_print_fn(crop_window),
                 )
                 crop_window.close()

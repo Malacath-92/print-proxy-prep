@@ -999,6 +999,7 @@ class ActionsWidget(QGroupBox):
                         bleed_edge,
                         CFG.MaxDPI,
                         CFG.VibranceBump,
+                        CFG.EnableUncrop,
                         make_popup_print_fn(crop_window),
                     )
 
@@ -1231,6 +1232,14 @@ class GlobalOptionsWidget(QGroupBox):
 
         self.setTitle("Global Config")
 
+        uncropped_checkbox = QCheckBox("Allow Uncropped")
+        uncropped_checkbox.setCheckState(
+            QtCore.Qt.CheckState.Checked
+            if CFG.EnableUncrop
+            else QtCore.Qt.CheckState.Unchecked
+        )
+        uncropped_checkbox.setToolTip("Allows putting pre-cropped images into images/crop")
+
         vibrance_checkbox = QCheckBox("Vibrance Bump")
         vibrance_checkbox.setCheckState(
             QtCore.Qt.CheckState.Checked
@@ -1252,19 +1261,25 @@ class GlobalOptionsWidget(QGroupBox):
         )
 
         layout = QVBoxLayout()
+        layout.addWidget(uncropped_checkbox)
         layout.addWidget(vibrance_checkbox)
         layout.addWidget(max_dpi)
         layout.addWidget(paper_sizes)
 
         self.setLayout(layout)
 
-        def apply_config(force_recrop):
-            if force_recrop:
+        def apply_config(force_uncrop):
+            if force_uncrop:
                 if os.path.exists(crop_dir) and os.path.isdir(crop_dir):
                     shutil.rmtree(crop_dir)
                 if os.path.exists(img_cache) and os.path.isfile(img_cache):
                     os.remove(img_cache)
             save_config(CFG)
+
+        def change_uncropped_bump(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            CFG.EnableUncrop = enabled
+            apply_config(False)
 
         def change_vibrance_bump(s):
             enabled = s == QtCore.Qt.CheckState.Checked
@@ -1279,6 +1294,7 @@ class GlobalOptionsWidget(QGroupBox):
             CFG.DefaultPageSize = t
             apply_config(False)
 
+        uncropped_checkbox.checkStateChanged.connect(change_uncropped_bump)
         vibrance_checkbox.checkStateChanged.connect(change_vibrance_bump)
         max_dpi_spin_box.valueChanged.connect(change_max_dpi)
         paper_sizes._widget.currentTextChanged.connect(change_papersize)

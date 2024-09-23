@@ -17,6 +17,7 @@ class GlobalConfig():
         self.VibranceBump = False
         self.MaxDPI = 1200
         self.DefaultPageSize = "Letter"
+        self.EnableUncrop = True
 
 
 def load_config() -> GlobalConfig:
@@ -30,6 +31,7 @@ def load_config() -> GlobalConfig:
     parsed_config.VibranceBump = def_cfg.getboolean("Vibrance.Bump", False)
     parsed_config.MaxDPI = def_cfg.getint("Max.DPI", 1200)
     parsed_config.DefaultPageSize = def_cfg.get("Page.Size", "Letter")
+    parsed_config.EnableUncrop = def_cfg.getboolean("Enable.Uncrop", True)
 
     return parsed_config
 
@@ -43,6 +45,7 @@ def save_config(cfg):
     def_cfg["Vibrance.Bump"] = str(cfg.VibranceBump)
     def_cfg["Max.DPI"] = str(cfg.MaxDPI)
     def_cfg["Page.Size"] = cfg.DefaultPageSize
+    def_cfg["Enable.Uncrop"] = str(cfg.EnableUncrop)
 
     with open(cfg_path, 'w') as configfile:
         config_parser.write(configfile)

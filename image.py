@@ -75,9 +75,9 @@ def crop_image(image, image_name, bleed_edge, max_dpi, print_fn=None):
 
     (h, w, _) = image.shape
     (bw, bh) = card_size_with_bleed_inch
-    c = round(0.12 * min(w / bw, h / bh))
-    dpi = c * (1 / 0.12)
-    if bleed_edge > 0:
+    dpi = min(w / bw, h / bh)
+    c = round(0.12 * dpi)
+    if bleed_edge is not None and bleed_edge > 0:
         bleed_edge_inch = mm_to_inch(bleed_edge)
         bleed_edge_pixel = dpi * bleed_edge_inch
         c = round(0.12 * min(w / bw, h / bh) - bleed_edge_pixel)
@@ -107,6 +107,20 @@ def crop_image(image, image_name, bleed_edge, max_dpi, print_fn=None):
     return cropped_image
 
 
+def uncrop_image(image, image_name, print_fn=None):
+    print_fn = print_fn if print_fn is not None else lambda *args: args
+
+    (h, w, _) = image.shape
+    (bw, bh) = card_size_without_bleed_inch
+    dpi = min(w / bw, h / bh)
+    c = round(dpi * 0.12)
+    print_fn(
+        f"Reinserting bleed edge...\n{image_name} - DPI calculated: {dpi}, adding {c} pixels around frame"
+    )
+
+    return cv2.copyMakeBorder(image, c, c, c, c, cv2.BORDER_CONSTANT, value=0xffffffff)
+    
+
 def cropper(
     image_dir,
     crop_dir,
@@ -115,6 +129,7 @@ def cropper(
     bleed_edge,
     max_dpi,
     do_vibrance_bump,
+    uncrop,
     print_fn,
 ):
     has_bleed_edge = bleed_edge is not None and bleed_edge > 0
@@ -127,6 +142,7 @@ def cropper(
             None,
             max_dpi,
             do_vibrance_bump,
+            uncrop,
             print_fn,
         )
 
@@ -149,10 +165,21 @@ def cropper(
             )
         write_image(os.path.join(output_dir, img_file), cropped_image)
 
+    extra_files = []
+
     output_files = list_image_files(output_dir)
     for img_file in output_files:
         if not os.path.exists(os.path.join(image_dir, img_file)):
-            os.remove(os.path.join(output_dir, img_file))
+            extra_files.append(img_file)
+
+    if uncrop and not has_bleed_edge:
+        for extra_img in extra_files:
+            image = read_image(os.path.join(output_dir, extra_img))
+            uncropped_image = uncrop_image(image, extra_img, print_fn)
+            write_image(os.path.join(image_dir, extra_img), uncropped_image)
+    else:
+        for extra in extra_files:
+            os.remove(os.path.join(output_dir, extra))
 
     if need_cache_previews(crop_dir, img_dict):
         cache_previews(img_cache, image_dir, crop_dir, print_fn, img_dict)

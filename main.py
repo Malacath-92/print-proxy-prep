@@ -54,6 +54,7 @@ def init():
         None,
         CFG.MaxDPI,
         CFG.VibranceBump,
+        CFG.EnableUncrop,
         gui.make_popup_print_fn(loading_window),
     )
 
@@ -103,6 +104,9 @@ def init():
         for key, value in default_print_dict.items():
             if key not in print_dict:
                 print_dict[key] = value
+        for key, value in default_print_dict["cards"].items():
+            if key not in print_dict["cards"]:
+                print_dict["cards"][key] = value
 
         # Make sure the size is a tuple, not a list
         print_dict["size"] = tuple(print_dict["size"])
@@ -132,6 +136,7 @@ def init():
             bleed_edge,
             CFG.MaxDPI,
             CFG.VibranceBump,
+            CFG.EnableUncrop,
             gui.make_popup_print_fn(loading_window),
         )
 
