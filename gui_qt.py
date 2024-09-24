@@ -677,10 +677,15 @@ class CardScrollArea(QScrollArea):
         global_set_zero_button.clicked.connect(reset_number)
 
         self._card_grid = card_grid
-    
+
     def computeMinimumWidth(self):
         margins = self.widget().layout().contentsMargins()
-        return self._card_grid.minimumWidth() + self.verticalScrollBar().width() + margins.left() + margins.right()
+        return (
+            self._card_grid.minimumWidth()
+            + self.verticalScrollBar().width()
+            + margins.left()
+            + margins.right()
+        )
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -871,7 +876,15 @@ class PrintPreview(QScrollArea):
         img_get.cache_clear()
 
         pages = [
-            PagePreview(page["cards"], page["left_to_right"], columns, rows, bleed_edge, page_size, img_get)
+            PagePreview(
+                page["cards"],
+                page["left_to_right"],
+                columns,
+                rows,
+                bleed_edge,
+                page_size,
+                img_get,
+            )
             for page in pages
         ]
 
@@ -1238,7 +1251,9 @@ class GlobalOptionsWidget(QGroupBox):
             if CFG.EnableUncrop
             else QtCore.Qt.CheckState.Unchecked
         )
-        uncropped_checkbox.setToolTip("Allows putting pre-cropped images into images/crop")
+        uncropped_checkbox.setToolTip(
+            "Allows putting pre-cropped images into images/crop"
+        )
 
         vibrance_checkbox = QCheckBox("Vibrance Bump")
         vibrance_checkbox.setCheckState(

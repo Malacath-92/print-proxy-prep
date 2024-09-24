@@ -12,7 +12,7 @@ card_size_without_bleed_inch = (2.48, 3.46)
 card_ratio = card_size_without_bleed_inch[0] / card_size_without_bleed_inch[1]
 
 
-class GlobalConfig():
+class GlobalConfig:
     def __init__(self):
         self.VibranceBump = False
         self.MaxDPI = 1200
@@ -47,7 +47,7 @@ def save_config(cfg):
     def_cfg["Page.Size"] = cfg.DefaultPageSize
     def_cfg["Enable.Uncrop"] = str(cfg.EnableUncrop)
 
-    with open(cfg_path, 'w') as configfile:
+    with open(cfg_path, "w") as configfile:
         config_parser.write(configfile)
 
 

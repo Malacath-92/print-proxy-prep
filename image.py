@@ -118,8 +118,8 @@ def uncrop_image(image, image_name, print_fn=None):
         f"Reinserting bleed edge...\n{image_name} - DPI calculated: {dpi}, adding {c} pixels around frame"
     )
 
-    return cv2.copyMakeBorder(image, c, c, c, c, cv2.BORDER_CONSTANT, value=0xffffffff)
-    
+    return cv2.copyMakeBorder(image, c, c, c, c, cv2.BORDER_CONSTANT, value=0xFFFFFFFF)
+
 
 def cropper(
     image_dir,
