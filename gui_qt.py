@@ -544,6 +544,7 @@ class CardGrid(QWidget):
         self._cards = {}
 
         grid_layout = QGridLayout()
+        grid_layout.setContentsMargins(9, 9, 9, 9)
         self.setLayout(grid_layout)
         self.refresh(print_dict, img_dict)
 
@@ -589,7 +590,7 @@ class CardGrid(QWidget):
         grid_layout = self.layout()
 
         i = 0
-        cols = print_dict["columns"]
+        cols = CFG.DisplayColumns
         for card_name, _ in print_dict["cards"].items():
             if card_name.startswith("__") or card_name not in img_dict:
                 continue
@@ -688,7 +689,7 @@ class CardScrollArea(QScrollArea):
         margins = self.widget().layout().contentsMargins()
         return (
             self._card_grid.minimumWidth()
-            + self.verticalScrollBar().width()
+            + 2 * self.verticalScrollBar().width()
             + margins.left()
             + margins.right()
         )
@@ -1024,14 +1025,12 @@ class ActionsWidget(QGroupBox):
 
                     for img in image.list_image_files(crop_dir):
                         if img not in print_dict["cards"].keys():
-                            print(f"{img} found and added to list.")
                             print_dict["cards"][img] = 1
                             self._rebuild_after_cropper = True
 
                     deleted_images = []
                     for img in print_dict["cards"].keys():
                         if img not in img_dict.keys():
-                            print(f"{img} not found and removed from list.")
                             deleted_images.append(img)
                             self._rebuild_after_cropper = True
                     for img in deleted_images:
@@ -1247,11 +1246,18 @@ class CardOptionsWidget(QGroupBox):
 
 
 class GlobalOptionsWidget(QGroupBox):
-    def __init__(self, crop_dir, img_cache):
+    def __init__(self, crop_dir, img_cache, print_dict, img_dict):
         super().__init__()
 
         self.setTitle("Global Config")
 
+        display_columns_spin_box = QDoubleSpinBox()
+        display_columns_spin_box.setDecimals(0)
+        display_columns_spin_box.setRange(2, 10)
+        display_columns_spin_box.setSingleStep(1)
+        display_columns_spin_box.setValue(CFG.DisplayColumns)
+        display_columns = WidgetWithLabel("Display &Columns", display_columns_spin_box)
+        display_columns.setToolTip("Number columns in card view")
 
         precropped_checkbox = QCheckBox("Allow Precropped")
         precropped_checkbox.setCheckState(
@@ -1284,12 +1290,18 @@ class GlobalOptionsWidget(QGroupBox):
         )
 
         layout = QVBoxLayout()
+        layout.addWidget(display_columns)
         layout.addWidget(precropped_checkbox)
         layout.addWidget(vibrance_checkbox)
         layout.addWidget(max_dpi)
         layout.addWidget(paper_sizes)
 
         self.setLayout(layout)
+
+        def change_display_columns(v):
+            CFG.DisplayColumns = int(v)
+            apply_config(False)
+            self.window().refresh(print_dict, img_dict)
 
         def apply_config(force_uncrop):
             if force_uncrop:
@@ -1317,6 +1329,7 @@ class GlobalOptionsWidget(QGroupBox):
             CFG.DefaultPageSize = t
             apply_config(False)
 
+        display_columns_spin_box.valueChanged.connect(change_display_columns)
         precropped_checkbox.checkStateChanged.connect(change_precropped)
         vibrance_checkbox.checkStateChanged.connect(change_vibrance_bump)
         max_dpi_spin_box.valueChanged.connect(change_max_dpi)
@@ -1345,7 +1358,7 @@ class OptionsWidget(QWidget):
         )
         print_options = PrintOptionsWidget(print_dict, img_dict)
         card_options = CardOptionsWidget(print_dict, img_dict)
-        global_options = GlobalOptionsWidget(crop_dir, img_cache)
+        global_options = GlobalOptionsWidget(crop_dir, img_cache, print_dict, img_dict)
 
         layout = QVBoxLayout()
         layout.addWidget(actions_widget)

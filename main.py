@@ -75,10 +75,8 @@ def init():
 
         default_page_size = CFG.DefaultPageSize
         default_print_dict = {
+            # list of all cards
             "cards": {"dummy": 1},
-            # program window settings
-            "size": (None, None),  # only used by the PySimpleGui implementation
-            "columns": 5,
             # backside options
             "backside_enabled": False,
             "backside_default": "__back.png",
