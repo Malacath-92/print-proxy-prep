@@ -3,14 +3,8 @@ import json
 
 import image
 import gui_qt
-import gui_sg
 from util import *
 from constants import *
-
-if "--legacy-ui" in sys.argv:
-    gui = gui_sg
-else:
-    gui = gui_qt
 
 image_dir = os.path.join(cwd, "images")
 crop_dir = os.path.join(image_dir, "crop")
@@ -37,7 +31,7 @@ def init():
 
         if image.need_cache_previews(crop_dir, img_dict):
             print_fn = (
-                gui.make_popup_print_fn(loading_window)
+                gui_qt.make_popup_print_fn(loading_window)
                 if loading_window is not None
                 else print
             )
@@ -55,7 +49,7 @@ def init():
         CFG.MaxDPI,
         CFG.VibranceBump,
         CFG.EnableUncrop,
-        gui.make_popup_print_fn(loading_window),
+        gui_qt.make_popup_print_fn(loading_window),
     )
 
     def load_print_dict():
@@ -137,21 +131,21 @@ def init():
             CFG.MaxDPI,
             CFG.VibranceBump,
             CFG.EnableUncrop,
-            gui.make_popup_print_fn(loading_window),
+            gui_qt.make_popup_print_fn(loading_window),
         )
 
 
-app = gui.init()
+app = gui_qt.init()
 
-loading_window = gui.popup(None, "Loading...")
+loading_window = gui_qt.popup(None, "Loading...")
 loading_window.show_during_work(init)
 del loading_window
 
-window = gui.window_setup(
+window = gui_qt.window_setup(
     image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
 )
 
-gui.event_loop(
+gui_qt.event_loop(
     app, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
 )
 

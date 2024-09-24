@@ -1,5 +1,3 @@
-PySimpleGUI
-easygui
 PyQt6
 reportlab
 opencv-python
