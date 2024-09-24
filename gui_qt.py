@@ -1252,13 +1252,14 @@ class GlobalOptionsWidget(QGroupBox):
 
         self.setTitle("Global Config")
 
-        uncropped_checkbox = QCheckBox("Allow Uncropped")
-        uncropped_checkbox.setCheckState(
+
+        precropped_checkbox = QCheckBox("Allow Precropped")
+        precropped_checkbox.setCheckState(
             QtCore.Qt.CheckState.Checked
             if CFG.EnableUncrop
             else QtCore.Qt.CheckState.Unchecked
         )
-        uncropped_checkbox.setToolTip(
+        precropped_checkbox.setToolTip(
             "Allows putting pre-cropped images into images/crop"
         )
 
@@ -1283,7 +1284,7 @@ class GlobalOptionsWidget(QGroupBox):
         )
 
         layout = QVBoxLayout()
-        layout.addWidget(uncropped_checkbox)
+        layout.addWidget(precropped_checkbox)
         layout.addWidget(vibrance_checkbox)
         layout.addWidget(max_dpi)
         layout.addWidget(paper_sizes)
@@ -1298,7 +1299,7 @@ class GlobalOptionsWidget(QGroupBox):
                     os.remove(img_cache)
             save_config(CFG)
 
-        def change_uncropped_bump(s):
+        def change_precropped(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             CFG.EnableUncrop = enabled
             apply_config(False)
@@ -1316,7 +1317,7 @@ class GlobalOptionsWidget(QGroupBox):
             CFG.DefaultPageSize = t
             apply_config(False)
 
-        uncropped_checkbox.checkStateChanged.connect(change_uncropped_bump)
+        precropped_checkbox.checkStateChanged.connect(change_precropped)
         vibrance_checkbox.checkStateChanged.connect(change_vibrance_bump)
         max_dpi_spin_box.valueChanged.connect(change_max_dpi)
         paper_sizes._widget.currentTextChanged.connect(change_papersize)
