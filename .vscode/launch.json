@@ -9,7 +9,6 @@
             "type": "debugpy",
             "request": "launch",
             "program": "main.py",
-            // "args": ["--legacy-ui"],
             "console": "integratedTerminal",
             "python": "venv/scripts/python.exe"
         }
