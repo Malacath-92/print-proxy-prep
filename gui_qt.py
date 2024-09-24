@@ -602,15 +602,20 @@ class CardGrid(QWidget):
             grid_layout.addWidget(card_widget, x, y)
             i = i + 1
 
-        if i == 0:
+        for j in range(i, cols):
             dummy_name = "dummy"
             card_widget = CardWidget(print_dict, img_dict, dummy_name)
+            sp_retain = card_widget.sizePolicy()
+            sp_retain.setRetainSizeWhenHidden(True)
+            card_widget.setSizePolicy(sp_retain)
+            card_widget.hide()
+
             self._cards[dummy_name] = card_widget
-            grid_layout.addWidget(card_widget, 0, 0)
-            i = 1
+            grid_layout.addWidget(card_widget, 0, j)
+            i = i + 1
 
         self._first_item = list(self._cards.values())[0]
-        self._cols = min(i, cols)
+        self._cols = cols
         self._rows = math.ceil(i / cols)
         self._nested_resize = False
 
@@ -649,6 +654,7 @@ class CardScrollArea(QScrollArea):
         card_area_layout = QVBoxLayout()
         card_area_layout.addWidget(global_number_widget)
         card_area_layout.addWidget(card_grid)
+        card_area_layout.addStretch()
         card_area_layout.setSpacing(0)
 
         card_area = QWidget()
@@ -1029,7 +1035,8 @@ class ActionsWidget(QGroupBox):
                             deleted_images.append(img)
                             self._rebuild_after_cropper = True
                     for img in deleted_images:
-                        del print_dict["cards"][img]
+                        if img != "dummy":
+                            del print_dict["cards"][img]
 
                 self.window().setEnabled(False)
                 crop_window = popup(self.window(), "Cropping images...")
