@@ -66,6 +66,14 @@ def init():
                 if img not in print_dict["cards"].keys():
                     print_dict["cards"][img] = 0 if img.startswith("__") else 1
 
+            # And also check we don't have stale cards in here
+            stale_images = []
+            for img in print_dict["cards"].keys():
+                if img not in crop_list:
+                    stale_images.append(img)
+            for img in stale_images:
+                del print_dict["cards"][img]
+
             # Make sure we have a sensible bleed edge
             bleed_edge = str(print_dict["bleed_edge"])
             bleed_edge = cap_bleed_edge_str(bleed_edge)
