@@ -105,9 +105,6 @@ def init():
             if key not in print_dict:
                 print_dict[key] = value
 
-        # Make sure the size is a tuple, not a list
-        print_dict["size"] = tuple(print_dict["size"])
-
         # Initialize the image amount
         for img in crop_list:
             if img not in print_dict["cards"].keys():
