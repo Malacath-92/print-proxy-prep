@@ -76,7 +76,7 @@ def init():
         default_page_size = CFG.DefaultPageSize
         default_print_dict = {
             # list of all cards
-            "cards": {"dummy": 1},
+            "cards": {},
             # backside options
             "backside_enabled": False,
             "backside_default": "__back.png",
@@ -96,9 +96,6 @@ def init():
         for key, value in default_print_dict.items():
             if key not in print_dict:
                 print_dict[key] = value
-        for key, value in default_print_dict["cards"].items():
-            if key not in print_dict["cards"]:
-                print_dict["cards"][key] = value
 
         # Make sure the size is a tuple, not a list
         print_dict["size"] = tuple(print_dict["size"])

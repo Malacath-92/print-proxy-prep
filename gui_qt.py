@@ -429,9 +429,11 @@ class CardWidget(QWidget):
             )
             backside_img = BacksideImage(backside_name, img_dict)
 
+        initial_number = print_dict["cards"][card_name] if card_name is not None else 1
+
         number_edit = QLineEdit()
         number_edit.setValidator(QIntValidator(0, 100, self))
-        number_edit.setText(str(print_dict["cards"][card_name]))
+        number_edit.setText(str(initial_number))
         number_edit.setFixedWidth(40)
 
         decrement_button = QPushButton("➖")
@@ -537,6 +539,24 @@ class CardWidget(QWidget):
         self.apply_number(print_dict, number)
 
 
+class DummyCardWidget(CardWidget):
+    def __init__(self, print_dict, img_dict):
+        super().__init__(print_dict, img_dict, None)
+        self._card_name = '__dummy'
+
+    def apply_number(self, print_dict, number):
+        pass
+
+    def edit_number(self, print_dict):
+        pass
+
+    def dec_number(self, print_dict):
+        pass
+
+    def inc_number(self, print_dict):
+        pass
+
+
 class CardGrid(QWidget):
     def __init__(self, print_dict, img_dict):
         super().__init__()
@@ -604,14 +624,13 @@ class CardGrid(QWidget):
             i = i + 1
 
         for j in range(i, cols):
-            dummy_name = "dummy"
-            card_widget = CardWidget(print_dict, img_dict, dummy_name)
+            card_widget = DummyCardWidget(print_dict, img_dict)
             sp_retain = card_widget.sizePolicy()
             sp_retain.setRetainSizeWhenHidden(True)
             card_widget.setSizePolicy(sp_retain)
             card_widget.hide()
 
-            self._cards[dummy_name] = card_widget
+            self._cards[card_widget._card_name] = card_widget
             grid_layout.addWidget(card_widget, 0, j)
             i = i + 1
 
@@ -1034,8 +1053,7 @@ class ActionsWidget(QGroupBox):
                             deleted_images.append(img)
                             self._rebuild_after_cropper = True
                     for img in deleted_images:
-                        if img != "dummy":
-                            del print_dict["cards"][img]
+                        del print_dict["cards"][img]
 
                 self.window().setEnabled(False)
                 crop_window = popup(self.window(), "Cropping images...")
