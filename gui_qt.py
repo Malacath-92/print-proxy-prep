@@ -542,7 +542,7 @@ class CardWidget(QWidget):
 class DummyCardWidget(CardWidget):
     def __init__(self, print_dict, img_dict):
         super().__init__(print_dict, img_dict, None)
-        self._card_name = '__dummy'
+        self._card_name = "__dummy"
 
     def apply_number(self, print_dict, number):
         pass
@@ -926,6 +926,12 @@ class PrintPreview(QScrollArea):
             )
             bleed_info.setStyleSheet("QLabel { color : red; }")
             header_layout.addWidget(bleed_info)
+        if CFG.VibranceBump:
+            vibrance_info = QLabel(
+                "Preview does not respect 'Vibrance Bump' setting"
+            )
+            vibrance_info.setStyleSheet("QLabel { color : red; }")
+            header_layout.addWidget(vibrance_info)
 
         header = QWidget()
         header.setLayout(header_layout)
@@ -986,7 +992,9 @@ class ActionsWidget(QGroupBox):
 
         def render():
             bleed_edge = float(print_dict["bleed_edge"])
-            if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
+            if image.need_run_cropper(
+                image_dir, crop_dir, bleed_edge, CFG.VibranceBump
+            ):
                 QToolTip.showText(
                     QCursor.pos(),
                     "Cropper needs to be run first",
@@ -1025,7 +1033,9 @@ class ActionsWidget(QGroupBox):
 
         def run_cropper():
             bleed_edge = float(print_dict["bleed_edge"])
-            if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
+            if image.need_run_cropper(
+                image_dir, crop_dir, bleed_edge, CFG.VibranceBump
+            ):
 
                 self._rebuild_after_cropper = False
 
@@ -1318,34 +1328,28 @@ class GlobalOptionsWidget(QGroupBox):
 
         def change_display_columns(v):
             CFG.DisplayColumns = int(v)
-            apply_config(False)
-            self.window().refresh(print_dict, img_dict)
-
-        def apply_config(force_uncrop):
-            if force_uncrop:
-                if os.path.exists(crop_dir) and os.path.isdir(crop_dir):
-                    shutil.rmtree(crop_dir)
-                if os.path.exists(img_cache) and os.path.isfile(img_cache):
-                    os.remove(img_cache)
             save_config(CFG)
+            self.window().refresh(print_dict, img_dict)
 
         def change_precropped(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             CFG.EnableUncrop = enabled
-            apply_config(False)
+            save_config(CFG)
 
         def change_vibrance_bump(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             CFG.VibranceBump = enabled
-            apply_config(True)
+            save_config(CFG)
+            self.window().refresh_preview(print_dict, img_dict)
 
         def change_max_dpi(v):
             CFG.MaxDPI = int(v)
-            apply_config(True)
+            save_config(CFG)
 
         def change_papersize(t):
             CFG.DefaultPageSize = t
-            apply_config(False)
+            save_config(CFG)
+            self.window().refresh_preview(print_dict, img_dict)
 
         display_columns_spin_box.valueChanged.connect(change_display_columns)
         precropped_checkbox.checkStateChanged.connect(change_precropped)

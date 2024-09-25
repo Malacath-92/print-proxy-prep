@@ -116,7 +116,7 @@ def init():
     print_dict = load_print_dict()
 
     bleed_edge = float(print_dict["bleed_edge"])
-    if image.need_run_cropper(image_dir, crop_dir, bleed_edge):
+    if image.need_run_cropper(image_dir, crop_dir, bleed_edge, CFG.VibranceBump):
         image.cropper(
             image_dir,
             crop_dir,

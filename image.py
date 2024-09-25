@@ -55,10 +55,12 @@ def write_image(path, image):
         bytes.tofile(f)
 
 
-def need_run_cropper(image_dir, crop_dir, bleed_edge):
+def need_run_cropper(image_dir, crop_dir, bleed_edge, do_vibrance_bump):
     has_bleed_edge = bleed_edge is not None and bleed_edge > 0
 
     output_dir = crop_dir
+    if do_vibrance_bump:
+        output_dir = os.path.join(output_dir, "vibrance")
     if has_bleed_edge:
         output_dir = os.path.join(output_dir, str(bleed_edge).replace(".", "p"))
 
@@ -145,8 +147,22 @@ def cropper(
             uncrop,
             print_fn,
         )
+    elif do_vibrance_bump:
+        cropper(
+            image_dir,
+            crop_dir,
+            img_cache,
+            img_dict,
+            None,
+            max_dpi,
+            False,
+            uncrop,
+            print_fn,
+        )
 
     output_dir = crop_dir
+    if do_vibrance_bump:
+        output_dir = os.path.join(output_dir, "vibrance")
     if has_bleed_edge:
         output_dir = os.path.join(output_dir, str(bleed_edge).replace(".", "p"))
     if not os.path.exists(output_dir):

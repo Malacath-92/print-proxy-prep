@@ -30,12 +30,14 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     backside_offset = 0
     bleed_edge = float(print_dict["bleed_edge"])
     has_bleed_edge = bleed_edge > 0
+
+    b = 0
+    img_dir = crop_dir
+    if CFG.VibranceBump:
+        img_dir = os.path.join(crop_dir, 'vibrance')
     if has_bleed_edge:
         b = mm_to_inch(bleed_edge)
         img_dir = os.path.join(crop_dir, str(bleed_edge).replace(".", "p"))
-    else:
-        b = 0
-        img_dir = crop_dir
     (w, h) = card_size_without_bleed_inch
     w, h = inch_to_point((w + 2 * b)), inch_to_point((h + 2 * b))
     b = inch_to_point(b)
