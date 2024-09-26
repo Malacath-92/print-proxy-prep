@@ -1,7 +1,7 @@
 # print-proxy-prep
 Crop bleed edges from proxy images and make PDFs for at-home printing.
 
-![image](https://user-images.githubusercontent.com/103437609/203212263-1a029874-3611-4daf-8ac5-e1d23b429db6.png)
+![_printme pdf - Adobe Acrobat Reader (64-bit) 2024-09-26 09_49_43](https://github.com/user-attachments/assets/01c0f25e-61a9-4189-8b00-0dfedac6e73d)
 
 # Installation
 
@@ -23,7 +23,7 @@ There is a batch script to help with installation if you're not savvy with Pytho
 Then, you can run main.py from the command line like `venv\scripts\python main.py`, or `2_RUN.vbs` that you can just click and it will pop up the GUI.
 
 # Running the Program
-![image](https://user-images.githubusercontent.com/103437609/203212112-50db47df-0a4e-4bf2-9c59-a8554f521b7c.png)
+![image](https://github.com/user-attachments/assets/51618b13-b226-47aa-81ba-b1b59c8248db)
 
 First, throw some images with bleed edge in the `images` folder. Note that images starting with `__` will not be visible in the program. Then, when you opem main.py or hit the `Run Cropper` button from the GUI, it will go through all the images and crop them.
 
@@ -31,6 +31,7 @@ First, throw some images with bleed edge in the `images` folder. Note that image
 The left half of the window contains a grid of all cards you placed in the `images` folder. Below each image is an text input field and a +/-, use these to adjust how many copies for each card you want. On the top you have global controls to +/- all cards or reset them back to 1.
 
 ## Print Preview
+![image](https://github.com/user-attachments/assets/f241be6c-6d51-4b3c-94f3-45dde1c89d41)
 On the top-left you can switch over to the `Preview`, which shows you a preview of the printed page. It should update automatically when you change printing settings on the right.
 
 ## Options
@@ -43,6 +44,8 @@ Extends the guides for the cards on the edges of the layout to the very edge of 
 Instead of printing cards perfectly cropped to card size will leave a small amount of bleed edge. This emulates the real printing process and thus makes it easier to cut without having adjacent cards visible on slight miscuts at the cost of more ink usage.
 
 ### Enable Backside
+![image](https://github.com/user-attachments/assets/f370a7cb-021f-4980-adcb-3d6aba099650)
+
 Adds a backside to each image, which means when printing each other page will automatically be filled with the corresponding backsides for each image. This allows for double-sided cards, different card backs, etc.
 
 The default backside is `__back.png`, if that file is not available a question mark will be shown instead. To change the default just click on the `Default` button and browse to the image you want.
