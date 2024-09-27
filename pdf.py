@@ -34,10 +34,10 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     b = 0
     img_dir = crop_dir
     if CFG.VibranceBump:
-        img_dir = os.path.join(crop_dir, 'vibrance')
+        img_dir = os.path.join(img_dir, 'vibrance')
     if has_bleed_edge:
         b = mm_to_inch(bleed_edge)
-        img_dir = os.path.join(crop_dir, str(bleed_edge).replace(".", "p"))
+        img_dir = os.path.join(img_dir, str(bleed_edge).replace(".", "p"))
     (w, h) = card_size_without_bleed_inch
     w, h = inch_to_point((w + 2 * b)), inch_to_point((h + 2 * b))
     b = inch_to_point(b)
