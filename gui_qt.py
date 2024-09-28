@@ -3,7 +3,6 @@ import re
 import sys
 import math
 import json
-import shutil
 import functools
 import subprocess
 
@@ -39,6 +38,7 @@ from PyQt6.QtWidgets import (
 import pdf
 import image
 from util import *
+from config import *
 from constants import *
 import fallback_image as fallback
 
@@ -927,9 +927,7 @@ class PrintPreview(QScrollArea):
             bleed_info.setStyleSheet("QLabel { color : red; }")
             header_layout.addWidget(bleed_info)
         if CFG.VibranceBump:
-            vibrance_info = QLabel(
-                "Preview does not respect 'Vibrance Bump' setting"
-            )
+            vibrance_info = QLabel("Preview does not respect 'Vibrance Bump' setting")
             vibrance_info.setStyleSheet("QLabel { color : red; }")
             header_layout.addWidget(vibrance_info)
 
@@ -951,12 +949,9 @@ class PrintPreview(QScrollArea):
 class ActionsWidget(QGroupBox):
     def __init__(
         self,
-        image_dir,
-        crop_dir,
         print_json,
         print_dict,
         img_dict,
-        img_cache,
     ):
         super().__init__()
 
@@ -966,14 +961,16 @@ class ActionsWidget(QGroupBox):
         render_button = QPushButton("Render Document")
         save_button = QPushButton("Save Project")
         load_button = QPushButton("Load Project")
-        images_button = QPushButton("Open Images")
+        set_images_button = QPushButton("Set Image Folder")
+        open_images_button = QPushButton("Open Images")
 
         buttons = [
             cropper_button,
             render_button,
             save_button,
             load_button,
-            images_button,
+            set_images_button,
+            open_images_button,
         ]
         minimum_width = max(map(lambda x: x.sizeHint().width(), buttons))
 
@@ -992,6 +989,8 @@ class ActionsWidget(QGroupBox):
 
         def render():
             bleed_edge = float(print_dict["bleed_edge"])
+            image_dir = print_dict["image_dir"]
+            crop_dir = os.path.join(image_dir, "crop")
             if image.need_run_cropper(
                 image_dir, crop_dir, bleed_edge, CFG.VibranceBump
             ):
@@ -1033,6 +1032,9 @@ class ActionsWidget(QGroupBox):
 
         def run_cropper():
             bleed_edge = float(print_dict["bleed_edge"])
+            image_dir = print_dict["image_dir"]
+            crop_dir = os.path.join(image_dir, "crop")
+            img_cache = print_dict["img_cache"]
             if image.need_run_cropper(
                 image_dir, crop_dir, bleed_edge, CFG.VibranceBump
             ):
@@ -1085,12 +1087,14 @@ class ActionsWidget(QGroupBox):
                 json.dump(print_dict, fp)
 
         def open_images_folder():
-            open_folder(image_dir)
+            open_folder(print_dict["image_dir"])
 
         render_button.clicked.connect(render)
         cropper_button.clicked.connect(run_cropper)
         save_button.clicked.connect(save_project)
-        images_button.clicked.connect(open_images_folder)
+        # load_button.clicked.connect(open_images_folder)
+        # set_images_button.clicked.connect(open_images_folder)
+        open_images_button.clicked.connect(open_images_folder)
 
         self._cropper_button = cropper_button
         self._rebuild_after_cropper = False
@@ -1274,7 +1278,7 @@ class CardOptionsWidget(QGroupBox):
 
 
 class GlobalOptionsWidget(QGroupBox):
-    def __init__(self, crop_dir, img_cache, print_dict, img_dict):
+    def __init__(self, print_dict, img_dict):
         super().__init__()
 
         self.setTitle("Global Config")
@@ -1361,26 +1365,20 @@ class GlobalOptionsWidget(QGroupBox):
 class OptionsWidget(QWidget):
     def __init__(
         self,
-        image_dir,
-        crop_dir,
         print_json,
         print_dict,
         img_dict,
-        img_cache,
     ):
         super().__init__()
 
         actions_widget = ActionsWidget(
-            image_dir,
-            crop_dir,
             print_json,
             print_dict,
             img_dict,
-            img_cache,
         )
         print_options = PrintOptionsWidget(print_dict, img_dict)
         card_options = CardOptionsWidget(print_dict, img_dict)
-        global_options = GlobalOptionsWidget(crop_dir, img_cache, print_dict, img_dict)
+        global_options = GlobalOptionsWidget(print_dict, img_dict)
 
         layout = QVBoxLayout()
         layout.addWidget(actions_widget)
@@ -1412,7 +1410,7 @@ class CardTabs(QTabWidget):
         self.currentChanged.connect(current_changed)
 
 
-def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
+def window_setup(print_json, print_dict, img_dict):
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(print_dict, card_grid)
 
@@ -1420,16 +1418,12 @@ def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cach
 
     tabs = CardTabs(print_dict, img_dict, scroll_area, print_preview)
 
-    options = OptionsWidget(
-        image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
-    )
+    options = OptionsWidget(print_json, print_dict, img_dict)
 
     window = MainWindow(tabs, scroll_area, options, print_preview)
     window.show()
     return window
 
 
-def event_loop(
-    app, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
-):
+def event_loop(app):
     app.exec()

@@ -23,22 +23,22 @@ def list_image_files(dir):
     return list_files(dir, valid_image_extensions)
 
 
-def init(image_dir, crop_dir):
+def init():
+    with open(os.path.join(cwd, "vibrance.CUBE")) as f:
+        lut_raw = f.read().splitlines()[11:]
+
+    lsize = round(len(lut_raw) ** (1 / 3))
+    row2val = lambda row: tuple([float(val) for val in row.split(" ")])
+    lut_table = [row2val(row) for row in lut_raw]
+
+    global vibrance_cube
+    vibrance_cube = ImageFilter.Color3DLUT(lsize, lut_table)
+
+
+def init_image_folder(image_dir, crop_dir):
     for folder in [image_dir, crop_dir]:
         if not os.path.exists(folder):
             os.mkdir(folder)
-
-    def load_vibrance_cube():
-        with open(os.path.join(cwd, "vibrance.CUBE")) as f:
-            lut_raw = f.read().splitlines()[11:]
-        lsize = round(len(lut_raw) ** (1 / 3))
-        row2val = lambda row: tuple([float(val) for val in row.split(" ")])
-        lut_table = [row2val(row) for row in lut_raw]
-        lut = ImageFilter.Color3DLUT(lsize, lut_table)
-        return lut
-
-    global vibrance_cube
-    vibrance_cube = load_vibrance_cube()
 
 
 def read_image(path):
