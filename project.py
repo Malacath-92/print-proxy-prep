@@ -1,5 +1,6 @@
 import os
 import json
+import time
 
 import util
 import image
@@ -7,16 +8,7 @@ from config import *
 from constants import *
 
 
-def load(print_dict, img_dict, json_path, print_fn):
-    if os.path.exists(json_path):
-        with open(json_path, "r") as fp:
-            loaded_print_dict = json.load(fp)
-            print_dict.clear()
-            for key, value in loaded_print_dict.items():
-                print_dict[key] = value
-    else:
-        return
-
+def init_dict(print_dict, img_dict):
     default_page_size = CFG.DefaultPageSize
     default_print_dict = {
         # project options
@@ -47,6 +39,7 @@ def load(print_dict, img_dict, json_path, print_fn):
     # Get project folders
     image_dir = print_dict["image_dir"]
     crop_dir = os.path.join(image_dir, "crop")
+    image.init_image_folder(image_dir, crop_dir)
 
     # Get all image files in the crop directory
     crop_list = image.list_image_files(crop_dir)
@@ -76,16 +69,14 @@ def load(print_dict, img_dict, json_path, print_fn):
         if img not in print_dict["cards"].keys():
             print_dict["cards"][img] = 1
 
-    # deselect images starting with __
+    # Deselect images starting with __
     for img in crop_list:
         print_dict["cards"][img] = (
             0 if img.startswith("__") else print_dict["cards"][img]
         )
 
-    image.init_image_folder(image_dir, crop_dir)
-
+    # Initialize image cache
     img_cache = print_dict["img_cache"]
-
     if os.path.exists(img_cache):
         with open(img_cache, "r") as fp:
             loaded_img_dict = json.load(fp)
@@ -93,5 +84,43 @@ def load(print_dict, img_dict, json_path, print_fn):
             for key, value in loaded_img_dict.items():
                 img_dict[key] = value
 
+
+def init_images(print_dict, img_dict, print_fn):
+    image_dir = print_dict["image_dir"]
+    crop_dir = os.path.join(image_dir, "crop")
+    img_cache = print_dict["img_cache"]
+
+    # setup crops
+    bleed_edge = float(print_dict["bleed_edge"])
+    if image.need_run_cropper(image_dir, crop_dir, bleed_edge, CFG.VibranceBump):
+        image.cropper(
+            image_dir,
+            crop_dir,
+            img_cache,
+            img_dict,
+            bleed_edge,
+            CFG.MaxDPI,
+            CFG.VibranceBump,
+            CFG.EnableUncrop,
+            print_fn,
+        )
+
+    # setup image previews
+    img_cache = print_dict["img_cache"]
     if image.need_cache_previews(crop_dir, img_dict):
         image.cache_previews(img_cache, image_dir, crop_dir, print_fn, img_dict)
+
+
+def load(print_dict, img_dict, json_path, print_fn):
+    try:
+        with open(json_path, "r") as fp:
+            loaded_print_dict = json.load(fp)
+            for key, value in loaded_print_dict.items():
+                print_dict[key] = value
+    except:
+        print_fn("Error: Failed loading project... Resetting...")
+        time.sleep(1)
+        print_dict.clear()
+
+    init_dict(print_dict, img_dict)
+    init_images(print_dict, img_dict, print_fn)

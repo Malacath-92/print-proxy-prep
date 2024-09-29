@@ -5,6 +5,7 @@ import math
 import json
 import functools
 import subprocess
+from enum import Enum
 
 import PyQt6.QtCore as QtCore
 from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor, QIcon
@@ -37,15 +38,55 @@ from PyQt6.QtWidgets import (
 
 import pdf
 import image
+import project
 from util import *
 from config import *
 from constants import *
 import fallback_image as fallback
 
 
+class PrintProxyPrepApplication(QApplication):
+    def __init__(self, argv):
+        super().__init__(argv)
+
+        self._json_path = os.path.join(cwd, "print.json")
+
+        self.load()
+
+    def close(self):
+        self.save()
+
+    def set_window(self, window):
+        self._window = window
+        window.restoreGeometry(self._window_geometry)
+        window.restoreState(self._window_state)
+        self._window_geometry = None
+        self._window_state = None
+
+    def json_path(self):
+        return self._json_path
+
+    def set_json_path(self, json_path):
+        self._json_path = json_path
+
+    def save(self):
+        settings = QtCore.QSettings("Proxy", "PDF Proxy Printer")
+        settings.setValue("version", "1.0.0")
+        settings.setValue("geometry", self._window.saveGeometry())
+        settings.setValue("state", self._window.saveState())
+        settings.setValue("json", self._json_path)
+
+    def load(self):
+        settings = QtCore.QSettings("Proxy", "PDF Proxy Printer")
+        if settings.contains("version"):
+            self._window_geometry = settings.value("geometry")
+            self._window_state = settings.value("state")
+            if settings.contains("json"):
+                self._json_path = settings.value("json")
+
+
 def init():
-    app = QApplication(sys.argv)
-    return app
+    return PrintProxyPrepApplication(sys.argv)
 
 
 def popup(window, middle_text):
@@ -140,16 +181,54 @@ def make_popup_print_fn(popup):
     return popup_print_fn
 
 
+def folder_dialog(parent=None):
+    choice = QFileDialog.getExistingDirectory(
+        parent,
+        "Choose Folder",
+        ".",
+        QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks,
+    )
+    if choice != "":
+        return os.path.basename(choice)
+    else:
+        return None
+
+
+class FileDialogType(Enum):
+    Open = 0
+    Save = 1
+
+
+def file_dialog(parent, title, root, filter, type):
+    function = (
+        QFileDialog.getOpenFileName
+        if type == FileDialogType.Open
+        else QFileDialog.getSaveFileName
+    )
+    choice = function(
+        parent,
+        title,
+        root,
+        filter,
+    )[0]
+    if choice != "":
+        return os.path.basename(choice)
+    else:
+        return None
+
+
+def project_file_dialog(parent, type):
+    return file_dialog(parent, "Open Project", ".", "Json Files (*.json)", type)
+
+
 def image_file_dialog(parent=None):
-    choice = QFileDialog.getOpenFileName(
+    return file_dialog(
         parent,
         "Open Image",
         "images",
         f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
-    )[0]
-    if choice != "":
-        choice = os.path.basename(choice)
-    return choice
+        FileDialogType.Open,
+    )
 
 
 class WidgetWithLabel(QWidget):
@@ -202,8 +281,6 @@ class MainWindow(QMainWindow):
             myappid = "proxy.printer"  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
-        self.loadState()
-
         window_layout = QHBoxLayout()
         window_layout.addWidget(tabs)
         window_layout.addWidget(options)
@@ -216,21 +293,6 @@ class MainWindow(QMainWindow):
         self._scroll_area = scroll_area
         self._options = options
         self._print_preview = print_preview
-
-    def close(self):
-        self.saveSettings()
-
-    def saveSettings(self):
-        settings = QtCore.QSettings("Proxy", self.windowTitle())
-        settings.setValue("version", "1.0.0")
-        settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("state", self.saveState())
-
-    def loadState(self):
-        settings = QtCore.QSettings("Proxy", self.windowTitle())
-        if settings.contains("version"):
-            self.restoreGeometry(settings.value("geometry"))
-            self.restoreState(settings.value("state"))
 
     def refresh(self, print_dict, img_dict):
         self._scroll_area.refresh(print_dict, img_dict)
@@ -467,7 +529,7 @@ class CardWidget(QWidget):
 
             def backside_choose():
                 backside_choice = image_file_dialog(self)
-                if backside_choice != "" and (
+                if backside_choice is not None and (
                     card_name not in print_dict["backsides"]
                     or backside_choice != print_dict["backsides"][card_name]
                 ):
@@ -949,7 +1011,7 @@ class PrintPreview(QScrollArea):
 class ActionsWidget(QGroupBox):
     def __init__(
         self,
-        print_json,
+        application,
         print_dict,
         img_dict,
     ):
@@ -980,10 +1042,9 @@ class ActionsWidget(QGroupBox):
         layout.addWidget(cropper_button, 0, 0)
         layout.addWidget(render_button, 0, 1)
         layout.addWidget(save_button, 1, 0)
-        layout.addWidget(images_button, 1, 1)
-
-        # TODO: Missing this feature
-        # layout.addWidget(load_button, 2, 1)
+        layout.addWidget(load_button, 1, 1)
+        layout.addWidget(set_images_button, 2, 0)
+        layout.addWidget(open_images_button, 2, 1)
 
         self.setLayout(layout)
 
@@ -1083,8 +1144,63 @@ class ActionsWidget(QGroupBox):
                 )
 
         def save_project():
-            with open(print_json, "w") as fp:
-                json.dump(print_dict, fp)
+            new_project_json = project_file_dialog(self, FileDialogType.Save)
+            if new_project_json is not None:
+                application.set_json_path(new_project_json)
+                with open(new_project_json, "w") as fp:
+                    json.dump(print_dict, fp)
+
+        def load_project():
+            new_project_json = project_file_dialog(self, FileDialogType.Open)
+            if new_project_json is not None and os.path.exists(new_project_json):
+                application.set_json_path(new_project_json)
+
+                def load_project():
+                    project.load(
+                        print_dict,
+                        img_dict,
+                        new_project_json,
+                        make_popup_print_fn(reload_window),
+                    )
+
+                self.window().setEnabled(False)
+                reload_window = popup(self.window(), "Reloading project...")
+                reload_window.show_during_work(load_project)
+                del reload_window
+                self.window().refresh(print_dict, img_dict)
+                self.window().setEnabled(True)
+
+        def set_images_folder():
+            new_image_dir = folder_dialog(self)
+            if new_image_dir is not None:
+                print_dict["image_dir"] = new_image_dir
+                if new_image_dir == "images":
+                    print_dict["img_cache"] = "img.cache"
+                else:
+                    print_dict["img_cache"] = f"{new_image_dir}.cache"
+
+                project.init_dict(print_dict, img_dict)
+
+                bleed_edge = float(print_dict["bleed_edge"])
+                image_dir = new_image_dir
+                crop_dir = os.path.join(image_dir, "crop")
+                if image.need_run_cropper(
+                    image_dir, crop_dir, bleed_edge, CFG.VibranceBump
+                ) or image.need_cache_previews(crop_dir, img_dict):
+
+                    def reload_work():
+                        project.init_images(
+                            print_dict, img_dict, make_popup_print_fn(reload_window)
+                        )
+
+                    self.window().setEnabled(False)
+                    reload_window = popup(self.window(), "Reloading project...")
+                    reload_window.show_during_work(reload_work)
+                    del reload_window
+                    self.window().refresh(print_dict, img_dict)
+                    self.window().setEnabled(True)
+                else:
+                    self.window().refresh(print_dict, img_dict)
 
         def open_images_folder():
             open_folder(print_dict["image_dir"])
@@ -1092,8 +1208,8 @@ class ActionsWidget(QGroupBox):
         render_button.clicked.connect(render)
         cropper_button.clicked.connect(run_cropper)
         save_button.clicked.connect(save_project)
-        # load_button.clicked.connect(open_images_folder)
-        # set_images_button.clicked.connect(open_images_folder)
+        load_button.clicked.connect(load_project)
+        set_images_button.clicked.connect(set_images_folder)
         open_images_button.clicked.connect(open_images_folder)
 
         self._cropper_button = cropper_button
@@ -1255,7 +1371,7 @@ class CardOptionsWidget(QGroupBox):
 
         def pick_backside():
             default_backside_choice = image_file_dialog(self)
-            if default_backside_choice != "":
+            if default_backside_choice is not None:
                 print_dict["backside_default"] = default_backside_choice
                 backside_default_preview.refresh(
                     print_dict["backside_default"], img_dict
@@ -1365,14 +1481,14 @@ class GlobalOptionsWidget(QGroupBox):
 class OptionsWidget(QWidget):
     def __init__(
         self,
-        print_json,
+        application,
         print_dict,
         img_dict,
     ):
         super().__init__()
 
         actions_widget = ActionsWidget(
-            print_json,
+            application,
             print_dict,
             img_dict,
         )
@@ -1410,7 +1526,7 @@ class CardTabs(QTabWidget):
         self.currentChanged.connect(current_changed)
 
 
-def window_setup(print_json, print_dict, img_dict):
+def window_setup(application, print_dict, img_dict):
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(print_dict, card_grid)
 
@@ -1418,12 +1534,14 @@ def window_setup(print_json, print_dict, img_dict):
 
     tabs = CardTabs(print_dict, img_dict, scroll_area, print_preview)
 
-    options = OptionsWidget(print_json, print_dict, img_dict)
+    options = OptionsWidget(application, print_dict, img_dict)
 
     window = MainWindow(tabs, scroll_area, options, print_preview)
+    application.set_window(window)
+
     window.show()
     return window
 
 
-def event_loop(app):
-    app.exec()
+def event_loop(application):
+    application.exec()
