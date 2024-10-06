@@ -814,13 +814,26 @@ class PageGrid(QWidget):
             grid.addWidget(img, x, y)
             i = i + 1
 
+        for j in range(i, columns):
+            x, y = divmod(j, columns)
+            if not left_to_right:
+                y = rows - y + 1
+
+            img_data = fallback.data
+            img_size = fallback.size
+            img = CardImage(img_data, img_size)
+            sp_retain = img.sizePolicy()
+            sp_retain.setRetainSizeWhenHidden(True)
+            img.setSizePolicy(sp_retain)
+            img.hide()
+
+            grid.addWidget(img, x, y)
+
         self.setLayout(grid)
 
         self._rows = rows
-        self._cols = min(columns, i)
-
-        self._actual_rows = math.ceil(i / columns)
-        self._expected_rows = rows
+        self._cols = columns
+        self._expected_cols = columns
         self._has_missing_preview = has_missing_preview
 
     def hasMissingPreviews(self):
