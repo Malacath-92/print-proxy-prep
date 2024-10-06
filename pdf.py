@@ -1,6 +1,7 @@
 from reportlab.pdfgen import canvas
 
 from util import *
+from config import CFG
 from constants import *
 
 

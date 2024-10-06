@@ -294,6 +294,9 @@ class MainWindow(QMainWindow):
         self._options = options
         self._print_preview = print_preview
 
+    def refresh_widgets(self, print_dict):
+        self._options.refresh_widgets(print_dict)
+
     def refresh(self, print_dict, img_dict):
         self._scroll_area.refresh(print_dict, img_dict)
         self._options.refresh(print_dict, img_dict)
@@ -1167,6 +1170,7 @@ class ActionsWidget(QGroupBox):
                 reload_window = popup(self.window(), "Reloading project...")
                 reload_window.show_during_work(load_project)
                 del reload_window
+                self.window().refresh_widgets(print_dict)
                 self.window().refresh(print_dict, img_dict)
                 self.window().setEnabled(True)
 
@@ -1224,7 +1228,7 @@ class PrintOptionsWidget(QGroupBox):
         self.setTitle("Print Options")
 
         print_output = LineEditWithLabel("PDF &Filename", print_dict["filename"])
-        paper_sizes = ComboBoxWithLabel(
+        paper_size = ComboBoxWithLabel(
             "&Paper Size", list(page_sizes.keys()), print_dict["pagesize"]
         )
         orientation = ComboBoxWithLabel(
@@ -1239,7 +1243,7 @@ class PrintOptionsWidget(QGroupBox):
 
         layout = QVBoxLayout()
         layout.addWidget(print_output)
-        layout.addWidget(paper_sizes)
+        layout.addWidget(paper_size)
         layout.addWidget(orientation)
         layout.addWidget(guides_checkbox)
 
@@ -1261,9 +1265,24 @@ class PrintOptionsWidget(QGroupBox):
             print_dict["extended_guides"] = enabled
 
         print_output._widget.textChanged.connect(change_output)
-        paper_sizes._widget.currentTextChanged.connect(change_papersize)
+        paper_size._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
         guides_checkbox.stateChanged.connect(change_guides)
+
+        self._print_output = print_output._widget
+        self._paper_size = paper_size._widget
+        self._orientation = orientation._widget
+        self._guides_checkbox = guides_checkbox
+
+    def refresh_widgets(self, print_dict):
+        self._print_output.setText(print_dict["filename"])
+        self._paper_size.setCurrentText(print_dict["pagesize"])
+        self._orientation.setCurrentText(print_dict["orient"])
+        self._guides_checkbox.setCheckState(
+            QtCore.Qt.CheckState.Checked
+            if print_dict["extended_guides"]
+            else QtCore.Qt.CheckState.Unchecked
+        )
 
 
 class BacksidePreview(QWidget):
@@ -1387,7 +1406,19 @@ class CardOptionsWidget(QGroupBox):
         backside_default_button.clicked.connect(pick_backside)
         backside_offset_spin.valueChanged.connect(change_backside_offset)
 
+        self._bleed_edge_spin = bleed_edge_spin
+        self._backside_checkbox = backside_checkbox
+        self._backside_offset_spin = backside_offset_spin
         self._backside_default_preview = backside_default_preview
+
+    def refresh_widgets(self, print_dict):
+        self._bleed_edge_spin.setValue(float(print_dict["bleed_edge"]))
+        self._backside_checkbox.setCheckState(
+            QtCore.Qt.CheckState.Checked
+            if print_dict["backside_enabled"]
+            else QtCore.Qt.CheckState.Unchecked
+        )
+        self._backside_offset_spin.setValue(float(print_dict["backside_offset"]))
 
     def refresh(self, print_dict, img_dict):
         self._backside_default_preview.refresh(print_dict["backside_default"], img_dict)
@@ -1506,7 +1537,12 @@ class OptionsWidget(QWidget):
         self.setLayout(layout)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
+        self._print_options = print_options
         self._card_options = card_options
+
+    def refresh_widgets(self, print_dict):
+        self._print_options.refresh_widgets(print_dict)
+        self._card_options.refresh_widgets(print_dict)
 
     def refresh(self, print_dict, img_dict):
         self._card_options.refresh(print_dict, img_dict)
