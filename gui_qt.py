@@ -58,10 +58,11 @@ class PrintProxyPrepApplication(QApplication):
 
     def set_window(self, window):
         self._window = window
-        window.restoreGeometry(self._window_geometry)
-        window.restoreState(self._window_state)
-        self._window_geometry = None
-        self._window_state = None
+        if getattr(self, '_window_geometry'):
+            window.restoreGeometry(self._window_geometry)
+            window.restoreState(self._window_state)
+            self._window_geometry = None
+            self._window_state = None
 
     def json_path(self):
         return self._json_path
