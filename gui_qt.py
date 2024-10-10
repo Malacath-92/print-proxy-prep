@@ -6,9 +6,18 @@ import json
 import functools
 import subprocess
 from enum import Enum
+from copy import deepcopy
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor, QIcon
+from PyQt6.QtGui import (
+    QPixmap,
+    QIntValidator,
+    QPainter,
+    QPainterPath,
+    QCursor,
+    QIcon,
+    QTransform,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -58,7 +67,7 @@ class PrintProxyPrepApplication(QApplication):
 
     def set_window(self, window):
         self._window = window
-        if getattr(self, '_window_geometry'):
+        if getattr(self, "_window_geometry"):
             window.restoreGeometry(self._window_geometry)
             window.restoreState(self._window_state)
             self._window_geometry = None
@@ -308,11 +317,12 @@ class MainWindow(QMainWindow):
 
 
 class CardImage(QLabel):
-    def __init__(self, img_data, img_size, round_corners=True):
+    def __init__(self, img_data, img_size, round_corners=True, rotate=False):
         super().__init__()
 
         raw_pixmap = QPixmap()
         raw_pixmap.loadFromData(img_data, "PNG")
+        pixmap = raw_pixmap
 
         card_size_minimum_width_pixels = 130
 
@@ -327,7 +337,7 @@ class CardImage(QLabel):
 
             path = QPainterPath()
             path.addRoundedRect(
-                QtCore.QRectF(raw_pixmap.rect()),
+                QtCore.QRectF(pixmap.rect()),
                 card_corner_radius_pixels,
                 card_corner_radius_pixels,
             )
@@ -337,12 +347,17 @@ class CardImage(QLabel):
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
             painter.setClipPath(path)
-            painter.drawPixmap(0, 0, raw_pixmap)
+            painter.drawPixmap(0, 0, pixmap)
             del painter
 
-            self.setPixmap(clipped_pixmap)
-        else:
-            self.setPixmap(raw_pixmap)
+            pixmap = clipped_pixmap
+
+        if rotate:
+            transform = QTransform()
+            transform.rotate(90)
+            pixmap = pixmap.transformed(transform)
+
+        self.setPixmap(pixmap)
 
         self.setSizePolicy(
             QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
@@ -350,8 +365,13 @@ class CardImage(QLabel):
         self.setScaledContents(True)
         self.setMinimumWidth(card_size_minimum_width_pixels)
 
+        self._rotated = rotate
+
     def heightForWidth(self, width):
-        return int(width / card_ratio)
+        if self._rotated:
+            return int(width * card_ratio)
+        else:
+            return int(width / card_ratio)
 
 
 class BacksideImage(CardImage):
@@ -790,52 +810,83 @@ class CardScrollArea(QScrollArea):
 
 
 class PageGrid(QWidget):
-    def __init__(self, cards, left_to_right, columns, rows, bleed_edge_mm, img_get):
+    def __init__(self, cards, left_to_right, columns, bleed_edge_mm, img_get):
         super().__init__()
 
         grid = QGridLayout()
         grid.setSpacing(0)
         grid.setContentsMargins(0, 0, 0, 0)
 
-        rows = math.ceil(len(cards) / columns)
-        has_missing_preview = False
+        self._has_missing_preview = False
 
-        i = 0
-        for card_name in cards:
-            x, y = divmod(i, columns)
+        def get_grid_cords(idx):
+            x, y = divmod(idx, columns)
             if not left_to_right:
-                y = rows - y + 1
+                y = columns - y + 1
+            return x, y
 
+        def get_img(card_name, is_oversized):
             img_data, img_size = img_get(card_name, bleed_edge_mm)
             if img_data is None:
                 img_data, img_size = fallback.data, fallback.size
-                has_missing_preview = True
-            img = CardImage(img_data, img_size, round_corners=False)
+                self._has_missing_preview = True
 
+            img = CardImage(
+                img_data, img_size, round_corners=False, rotate=is_oversized
+            )
+
+            return img
+
+        k = 0
+        for card_name in cards["oversized"]:
+            x, y = get_grid_cords(k)
+
+            # find slot that fits an oversized card
+            while y + 1 >= columns or grid.itemAtPosition(x, y + 1) is not None:
+                k = k + 1
+                x, y = get_grid_cords(k)
+
+            img = get_img(card_name, True)
+            grid.addWidget(img, x, y, 1, 2)
+            k = k + 2
+        del k
+
+        i = 0
+        for card_name in cards["regular"]:
+            x, y = get_grid_cords(i)
+
+            # find slot that is free for single card
+            while grid.itemAtPosition(x, y) is not None:
+                i = i + 1
+                x, y = get_grid_cords(i)
+
+            img = get_img(card_name, False)
             grid.addWidget(img, x, y)
             i = i + 1
+        del i
 
-        for j in range(i, columns):
-            x, y = divmod(j, columns)
-            if not left_to_right:
-                y = rows - y + 1
+        # pad with dummy images if we have only one uncompleted row
+        for j in range(0, columns):
+            x, y = get_grid_cords(j)
+            if grid.itemAtPosition(x, y) is None:
+                img_data = fallback.data
+                img_size = fallback.size
 
-            img_data = fallback.data
-            img_size = fallback.size
-            img = CardImage(img_data, img_size)
-            sp_retain = img.sizePolicy()
-            sp_retain.setRetainSizeWhenHidden(True)
-            img.setSizePolicy(sp_retain)
-            img.hide()
+                img = CardImage(img_data, img_size)
+                sp_retain = img.sizePolicy()
+                sp_retain.setRetainSizeWhenHidden(True)
+                img.setSizePolicy(sp_retain)
+                img.hide()
 
-            grid.addWidget(img, x, y)
+                grid.addWidget(img, x, y)
+
+        for i in range(0, grid.columnCount()):
+            grid.setColumnStretch(i, 1)
 
         self.setLayout(grid)
 
-        self._rows = rows
-        self._cols = columns
-        self._expected_cols = columns
-        self._has_missing_preview = has_missing_preview
+        self._rows = grid.rowCount()
+        self._cols = grid.columnCount()
 
     def hasMissingPreviews(self):
         return self._has_missing_preview
@@ -857,7 +908,7 @@ class PagePreview(QWidget):
     ):
         super().__init__()
 
-        grid = PageGrid(cards, left_to_right, columns, rows, bleed_edge_mm, img_get)
+        grid = PageGrid(cards, left_to_right, columns, bleed_edge_mm, img_get)
 
         layout = QVBoxLayout()
         layout.setSpacing(0)
@@ -936,30 +987,36 @@ class PrintPreview(QScrollArea):
 
         columns = int(page_width // card_width)
         rows = int(page_height // card_height)
-        images_per_page = columns * rows
 
-        images = []
-        for img, num in print_dict["cards"].items():
-            images.extend([img] * num)
+        pages = pdf.distribute_cards_to_pages(print_dict, columns, rows)
+
         pages = [
-            {"cards": images[i : i + images_per_page], "left_to_right": True}
-            for i in range(0, len(images), images_per_page)
+            {
+                "cards": page,
+                "left_to_right": True,
+            }
+            for page in pages
         ]
 
         if print_dict["backside_enabled"]:
             back_dict = print_dict["backsides"]
-            backsides = []
-            for img, num in print_dict["cards"].items():
-                backside = (
+
+            def backside_of_img(img):
+                return (
                     back_dict[img]
                     if img in back_dict
                     else print_dict["backside_default"]
                 )
-                backsides.extend([backside] * num)
-            backside_pages = [
-                {"cards": backsides[i : i + images_per_page], "left_to_right": False}
-                for i in range(0, len(backsides), images_per_page)
-            ]
+
+            backside_pages = deepcopy(pages)
+            for page in backside_pages:
+                page["cards"]["regular"] = [
+                    backside_of_img(img) for img in page["cards"]["regular"]
+                ]
+                page["cards"]["oversized"] = [
+                    backside_of_img(img) for img in page["cards"]["oversized"]
+                ]
+
             pages = [imgs for pair in zip(pages, backside_pages) for imgs in pair]
 
         @functools.cache

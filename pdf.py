@@ -3,6 +3,7 @@ from reportlab.pdfgen import canvas
 from util import *
 from config import CFG
 from constants import *
+from copy import deepcopy
 
 
 def draw_line(can, fx, fy, tx, ty, s=1):
@@ -134,4 +135,62 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
             # Next page
             pages.showPage()
 
+    return pages
+
+
+def distribute_cards_to_pages(print_dict, columns, rows):
+    images_per_page = columns * rows
+    oversized_images_per_page = (columns // 2) * rows
+
+    # throw all images n times into a list
+    images = []
+    for img, num in print_dict["cards"].items():
+        is_oversized = (
+            print_dict["oversized"][img] if img in print_dict["oversized"] else False
+        )
+        images.extend([(img, is_oversized)] * num)
+
+    # favor filling up with oversized cards first
+    images = sorted(images, key=lambda x: not x[1])
+
+    def page_has_space(page, oversized):
+        oversized_cards = len(page["oversized"])
+        regular_cards = len(page["regular"])
+        single_spaces = regular_cards + oversized_cards * 2
+        free_single_spaces = images_per_page - single_spaces
+        if oversized:
+            free_double_spaces = oversized_images_per_page - oversized_cards
+            return free_double_spaces > 0 and free_single_spaces > 1
+        else:
+            return free_single_spaces > 0
+
+    def is_page_full(page):
+        return page_has_space(page, False) == False
+
+    empty_page = {"regular": [], "oversized": []}
+    pages = []
+
+    unfinished_pages = []
+    for img, is_oversized in images:
+        # get a page that can fit this card
+        page_with_space = next(
+            filter(lambda x: page_has_space(x, is_oversized), unfinished_pages),
+            None,
+        )
+
+        # or start a new page if none is available
+        if page_with_space is None:
+            unfinished_pages.append(deepcopy(empty_page))
+            page_with_space = unfinished_pages[-1]
+
+        # add the image to the page
+        page_with_space["oversized" if is_oversized else "regular"].append(img)
+
+        # push full page into final list
+        if is_page_full(page_with_space):
+            pages.append(page_with_space)
+            unfinished_pages.remove(page_with_space)
+
+    # push all unfinished pages into final list
+    pages.extend(unfinished_pages)
     return pages
