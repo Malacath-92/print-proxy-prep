@@ -153,10 +153,9 @@ def popup(window, middle_text):
                 _refresh = QtCore.pyqtSignal(str)
 
                 def run(self):
-                    if is_debugger_attached():
-                        import debugpy
+                    import debugpy
 
-                        debugpy.debug_this_thread()
+                    debugpy.debug_this_thread()
 
                     work()
 
@@ -231,11 +230,11 @@ def project_file_dialog(parent, type):
     return file_dialog(parent, "Open Project", ".", "Json Files (*.json)", type)
 
 
-def image_file_dialog(parent=None):
+def image_file_dialog(parent, folder):
     return file_dialog(
         parent,
         "Open Image",
-        "images",
+        folder,
         f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
         FileDialogType.Open,
     )
@@ -317,7 +316,9 @@ class MainWindow(QMainWindow):
 
 
 class CardImage(QLabel):
-    def __init__(self, img_data, img_size, round_corners=True, rotate=False):
+    def __init__(
+        self, img_data, img_size, round_corners=True, rotate=False, flipped=False
+    ):
         super().__init__()
 
         raw_pixmap = QPixmap()
@@ -354,7 +355,11 @@ class CardImage(QLabel):
 
         if rotate:
             transform = QTransform()
-            transform.rotate(90)
+            transform.rotate(-90 if flipped else 90)
+            pixmap = pixmap.transformed(transform)
+        elif flipped:
+            transform = QTransform()
+            transform.rotate(180)
             pixmap = pixmap.transformed(transform)
 
         self.setPixmap(pixmap)
@@ -552,7 +557,7 @@ class CardWidget(QWidget):
                     card_widget.refresh_backside(new_backside_img)
 
             def backside_choose():
-                backside_choice = image_file_dialog(self)
+                backside_choice = image_file_dialog(self, print_dict["image_dir"])
                 if backside_choice is not None and (
                     card_name not in print_dict["backsides"]
                     or backside_choice != print_dict["backsides"][card_name]
@@ -810,64 +815,45 @@ class CardScrollArea(QScrollArea):
 
 
 class PageGrid(QWidget):
-    def __init__(self, cards, left_to_right, columns, bleed_edge_mm, img_get):
+    def __init__(self, cards, left_to_right, columns, rows, bleed_edge_mm, img_get):
         super().__init__()
 
         grid = QGridLayout()
         grid.setSpacing(0)
         grid.setContentsMargins(0, 0, 0, 0)
 
-        self._has_missing_preview = False
+        card_grid = pdf.distribute_cards_to_grid(cards, left_to_right, columns, rows)
 
-        def get_grid_cords(idx):
-            x, y = divmod(idx, columns)
-            if not left_to_right:
-                y = columns - y + 1
-            return x, y
+        has_missing_preview = False
 
-        def get_img(card_name, is_oversized):
-            img_data, img_size = img_get(card_name, bleed_edge_mm)
-            if img_data is None:
-                img_data, img_size = fallback.data, fallback.size
-                self._has_missing_preview = True
+        for x in range(0, rows):
+            for y in range(0, columns):
+                if card := card_grid[x][y]:
+                    (card_name, is_oversized) = card
+                    if card_name is None:
+                        continue
 
-            img = CardImage(
-                img_data, img_size, round_corners=False, rotate=is_oversized
-            )
+                    img_data, img_size = img_get(card_name, bleed_edge_mm)
+                    if img_data is None:
+                        img_data, img_size = fallback.data, fallback.size
+                        has_missing_preview = True
 
-            return img
+                    img = CardImage(
+                        img_data,
+                        img_size,
+                        round_corners=False,
+                        rotate=is_oversized,
+                        flipped=left_to_right and is_oversized,
+                    )
 
-        k = 0
-        for card_name in cards["oversized"]:
-            x, y = get_grid_cords(k)
-
-            # find slot that fits an oversized card
-            while y + 1 >= columns or grid.itemAtPosition(x, y + 1) is not None:
-                k = k + 1
-                x, y = get_grid_cords(k)
-
-            img = get_img(card_name, True)
-            grid.addWidget(img, x, y, 1, 2)
-            k = k + 2
-        del k
-
-        i = 0
-        for card_name in cards["regular"]:
-            x, y = get_grid_cords(i)
-
-            # find slot that is free for single card
-            while grid.itemAtPosition(x, y) is not None:
-                i = i + 1
-                x, y = get_grid_cords(i)
-
-            img = get_img(card_name, False)
-            grid.addWidget(img, x, y)
-            i = i + 1
-        del i
+                    if is_oversized:
+                        grid.addWidget(img, x, y, 1, 2)
+                    else:
+                        grid.addWidget(img, x, y)
 
         # pad with dummy images if we have only one uncompleted row
-        for j in range(0, columns):
-            x, y = get_grid_cords(j)
+        for i in range(0, columns):
+            x, y = pdf.get_grid_coords(i, columns, left_to_right)
             if grid.itemAtPosition(x, y) is None:
                 img_data = fallback.data
                 img_size = fallback.size
@@ -887,6 +873,7 @@ class PageGrid(QWidget):
 
         self._rows = grid.rowCount()
         self._cols = grid.columnCount()
+        self._has_missing_preview = has_missing_preview
 
     def hasMissingPreviews(self):
         return self._has_missing_preview
@@ -908,7 +895,7 @@ class PagePreview(QWidget):
     ):
         super().__init__()
 
-        grid = PageGrid(cards, left_to_right, columns, bleed_edge_mm, img_get)
+        grid = PageGrid(cards, left_to_right, columns, rows, bleed_edge_mm, img_get)
 
         layout = QVBoxLayout()
         layout.setSpacing(0)
@@ -1016,6 +1003,7 @@ class PrintPreview(QScrollArea):
                 page["cards"]["oversized"] = [
                     backside_of_img(img) for img in page["cards"]["oversized"]
                 ]
+                page["left_to_right"] = False
 
             pages = [imgs for pair in zip(pages, backside_pages) for imgs in pair]
 
@@ -1460,7 +1448,7 @@ class CardOptionsWidget(QGroupBox):
             self.window().refresh(print_dict, img_dict)
 
         def pick_backside():
-            default_backside_choice = image_file_dialog(self)
+            default_backside_choice = image_file_dialog(self, print_dict["image_dir"])
             if default_backside_choice is not None:
                 print_dict["backside_default"] = default_backside_choice
                 backside_default_preview.refresh(

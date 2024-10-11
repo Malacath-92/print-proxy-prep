@@ -41,6 +41,12 @@ def init_image_folder(image_dir, crop_dir):
             os.mkdir(folder)
 
 
+def rotate_image(img, clockwise):
+    return cv2.rotate(
+        img, cv2.ROTATE_90_CLOCKWISE if clockwise else cv2.ROTATE_90_COUNTERCLOCKWISE
+    )
+
+
 def read_image(path):
     with open(path, "rb") as f:
         bytes = bytearray(f.read())
@@ -215,6 +221,12 @@ def image_from_bytes(bytes):
     return img
 
 
+def image_to_bytes(img):
+    _, buffer = cv2.imencode(".png", img)
+    bio = io.BytesIO(buffer)
+    return bio.getvalue()
+
+
 def to_bytes(file_or_bytes, resize=None):
     if isinstance(file_or_bytes, numpy.ndarray):
         img = file_or_bytes
@@ -233,9 +245,7 @@ def to_bytes(file_or_bytes, resize=None):
             interpolation=cv2.INTER_AREA,
         )
         cur_height, cur_width = new_height, new_width
-    _, buffer = cv2.imencode(".png", img)
-    bio = io.BytesIO(buffer)
-    return bio.getvalue(), (cur_width, cur_height)
+    return image_to_bytes(img), (cur_width, cur_height)
 
 
 def need_cache_previews(crop_dir, img_dict):

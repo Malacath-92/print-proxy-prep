@@ -1,9 +1,22 @@
+import io
+from enum import Enum
+from copy import deepcopy
+from functools import cache
+
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 
 from util import *
 from config import CFG
 from constants import *
-from copy import deepcopy
+from image import read_image, image_to_bytes, rotate_image
+
+
+class CrossSegment(Enum):
+    TopLeft = (1, -1)
+    TopRight = (-1, -1)
+    BottomRight = (-1, 1)
+    BottomLeft = (1, 1)
 
 
 def draw_line(can, fx, fy, tx, ty, s=1):
@@ -21,15 +34,19 @@ def draw_line(can, fx, fy, tx, ty, s=1):
     can.line(fx, fy, tx, ty)
 
 
-# Draws black-white dashed cross at `(x, y)`, with a width of `c`, and a thickness of `s`
-def draw_cross(can, x, y, c=6, s=1):
-    draw_line(can, x, y - c, x, y + c, s)
-    draw_line(can, x - c, y, x + c, y, s)
+# Draws black-white dashed cross segment at `(x, y)`, with a width of `c`, and a thickness of `s`
+def draw_cross(can, x, y, segment, c=6, s=1):
+    (dx, dy) = segment.value
+    (tx, ty) = (x + c * dx, y + c * dy)
+
+    draw_line(can, x, y, tx, y, s)
+    draw_line(can, x, y, x, ty, s)
 
 
 def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     has_backside = print_dict["backside_enabled"]
     backside_offset = 0
+
     bleed_edge = float(print_dict["bleed_edge"])
     has_bleed_edge = bleed_edge > 0
 
@@ -50,44 +67,49 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     cols, rows = int(pw // w), int(ph // h)
     rx, ry = round((pw - (w * cols)) / 2), round((ph - (h * rows)) / 2)
     ry = ph - ry
-    images_per_page = cols * rows
 
-    images_dict = print_dict["cards"]
-    images = []
-    for img, num in images_dict.items():
-        images.extend([img] * num)
-    images = [
-        images[i : i + images_per_page] for i in range(0, len(images), images_per_page)
-    ]
+    images = distribute_cards_to_pages(print_dict, cols, rows)
 
     extended_guides = print_dict["extended_guides"]
+
+    @cache
+    def get_rotated_img(img_path, flipped):
+        img = read_image(img_path)
+        img = rotate_image(img, flipped)
+        img = image_to_bytes(img)
+        img = ImageReader(io.BytesIO(img))
+        return img
 
     for p, page_images in enumerate(images):
         render_fmt = "Rendering page {page}...\nImage number {img_idx} - {img_name}"
 
-        def get_ith_image_coords(i, left_to_right):
-            _, j = divmod(i, images_per_page)
-            y, x = divmod(j, cols)
-            if not left_to_right:
-                x = cols - (x + 1)
-            return x, y
-
-        def draw_image(img, i, x, y, dx=0.0, dy=0.0):
+        def draw_image(img, oversized, i, x, y, dx=0.0, dy=0.0, flipped=False):
             print_fn(render_fmt.format(page=p + 1, img_idx=i + 1, img_name=img))
             img_path = os.path.join(img_dir, img)
             if os.path.exists(img_path):
+                if oversized and flipped:
+                    x = x - 1
+
+                x = rx + x * w + dx
+                y = ry - y * h + dy - h
+                if oversized:
+                    img = get_rotated_img(img_path, flipped)
+                    cw = 2 * w
+                else:
+                    img = img_path
+                    cw = w
                 pages.drawImage(
-                    img_path,
-                    rx + x * w + dx,
-                    ry - y * h + dy - h,
-                    w,
+                    img,
+                    x,
+                    y,
+                    cw,
                     h,
                 )
 
-        def draw_cross_at_grid(ix, iy, dx=0.0, dy=0.0):
+        def draw_cross_at_grid(ix, iy, segment, dx=0.0, dy=0.0):
             x = rx + ix * w + dx
             y = ry - iy * h + dy
-            draw_cross(pages, x, y)
+            draw_cross(pages, x, y, segment)
             if extended_guides:
                 if ix == 0:
                     draw_line(pages, x, y, 0, y)
@@ -98,23 +120,38 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
                 if iy == rows:
                     draw_line(pages, x, y, x, 0)
 
-        # Draw front-sides
-        for i, img in enumerate(page_images):
-            x, y = get_ith_image_coords(i, True)
-            draw_image(img, i, x, y)
+        card_grid = distribute_cards_to_grid(page_images, True, cols, rows)
 
-            # Draw lines per image
-            if has_bleed_edge:
-                draw_cross_at_grid(x + 0, y + 0, +b, -b)
-                draw_cross_at_grid(x + 1, y + 0, -b, -b)
-                draw_cross_at_grid(x + 1, y + 1, -b, +b)
-                draw_cross_at_grid(x + 0, y + 1, +b, +b)
+        i = 0
+        for y in range(0, rows):
+            for x in range(0, cols):
+                if card := card_grid[y][x]:
+                    (card_name, is_oversized) = card
+                    if card_name is None:
+                        continue
 
-        # Draw lines for whole page
-        if not has_bleed_edge:
-            for y in range(rows + 1):
-                for x in range(cols + 1):
-                    draw_cross_at_grid(x, y)
+                    draw_image(card_name, is_oversized, i, x, y)
+                    i = i + 1
+
+                    if is_oversized:
+                        ob = 2 * b
+                        draw_cross_at_grid(
+                            x + 2, y + 0, CrossSegment.TopRight, -ob, -ob
+                        )
+                        draw_cross_at_grid(
+                            x + 2, y + 1, CrossSegment.BottomRight, -ob, +ob
+                        )
+                    else:
+                        ob = b
+                        draw_cross_at_grid(
+                            x + 1, y + 0, CrossSegment.TopRight, -ob, -ob
+                        )
+                        draw_cross_at_grid(
+                            x + 1, y + 1, CrossSegment.BottomRight, -ob, +ob
+                        )
+
+                    draw_cross_at_grid(x, y + 0, CrossSegment.TopLeft, +ob, -ob)
+                    draw_cross_at_grid(x, y + 1, CrossSegment.BottomLeft, +ob, +ob)
 
         # Next page
         pages.showPage()
@@ -122,15 +159,34 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
         # Draw back-sides if requested
         if has_backside:
             render_fmt = "Rendering backside for page {page}...\nImage number {img_idx} - {img_name}"
-            for i, img in enumerate(page_images):
-                print_fn(render_fmt.format(page=p + 1, img_idx=i + 1, img_name=img))
-                backside = (
-                    print_dict["backsides"][img]
-                    if img in print_dict["backsides"]
-                    else print_dict["backside_default"]
-                )
-                x, y = get_ith_image_coords(i, False)
-                draw_image(backside, i, x, y, backside_offset, 0)
+            i = 0
+            for y in range(0, rows):
+                for x in range(0, cols):
+                    if card := card_grid[y][x]:
+                        (card_name, is_oversized) = card
+                        if card_name is None:
+                            continue
+
+                        print_fn(
+                            render_fmt.format(
+                                page=p + 1, img_idx=i + 1, img_name=card_name
+                            )
+                        )
+                        backside = (
+                            print_dict["backsides"][card_name]
+                            if card_name in print_dict["backsides"]
+                            else print_dict["backside_default"]
+                        )
+                        draw_image(
+                            backside,
+                            is_oversized,
+                            i,
+                            cols - x - 1,
+                            y,
+                            backside_offset,
+                            0,
+                            True,
+                        )
 
             # Next page
             pages.showPage()
@@ -194,3 +250,46 @@ def distribute_cards_to_pages(print_dict, columns, rows):
     # push all unfinished pages into final list
     pages.extend(unfinished_pages)
     return pages
+
+
+def distribute_cards_to_grid(cards, left_to_right, columns, rows):
+    def get_coord(i):
+        return get_grid_coords(i, columns, left_to_right)
+
+    card_grid = [[None] * columns for i in range(rows)]
+
+    k = 0
+    for card_name in cards["oversized"]:
+        x, y = get_coord(k)
+
+        # find slot that fits an oversized card
+        while y + 1 >= columns or card_grid[x][y + 1] is not None:
+            k = k + 1
+            x, y = get_coord(k)
+
+        card_grid[x][y] = (card_name, True)
+        card_grid[x][y + 1] = (None, None)
+        k = k + 2
+    del k
+
+    i = 0
+    for card_name in cards["regular"]:
+        x, y = get_coord(i)
+
+        # find slot that is free for single card
+        while card_grid[x][y] is not None:
+            i = i + 1
+            x, y = get_coord(i)
+
+        card_grid[x][y] = (card_name, False)
+        i = i + 1
+    del i
+
+    return card_grid
+
+
+def get_grid_coords(idx, columns, left_to_right):
+    x, y = divmod(idx, columns)
+    if not left_to_right:
+        y = columns - y - 1
+    return x, y
