@@ -873,7 +873,7 @@ class PageGrid(QWidget):
                         img_size,
                         round_corners=False,
                         rotate=is_oversized,
-                        flipped=left_to_right and is_oversized,
+                        flipped=False,
                     )
 
                     if is_oversized:

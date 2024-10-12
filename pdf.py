@@ -75,7 +75,7 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     @cache
     def get_rotated_img(img_path, flipped):
         img = read_image(img_path)
-        img = rotate_image(img, flipped)
+        img = rotate_image(img, True)
         img = image_to_bytes(img)
         img = ImageReader(io.BytesIO(img))
         return img
