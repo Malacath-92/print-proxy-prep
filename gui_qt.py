@@ -59,6 +59,7 @@ class PrintProxyPrepApplication(QApplication):
         super().__init__(argv)
 
         self._json_path = os.path.join(cwd, "print.json")
+        self._settings_loaded = False
 
         self.load()
 
@@ -67,7 +68,7 @@ class PrintProxyPrepApplication(QApplication):
 
     def set_window(self, window):
         self._window = window
-        if getattr(self, "_window_geometry"):
+        if self._settings_loaded:
             window.restoreGeometry(self._window_geometry)
             window.restoreState(self._window_state)
             self._window_geometry = None
@@ -93,6 +94,8 @@ class PrintProxyPrepApplication(QApplication):
             self._window_state = settings.value("state")
             if settings.contains("json"):
                 self._json_path = settings.value("json")
+
+            self._settings_loaded = True
 
 
 def init():
