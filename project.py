@@ -21,6 +21,9 @@ def init_dict(print_dict, img_dict):
         "backside_default": "__back.png",
         "backside_offset": "0",
         "backsides": {},
+        # oversized options
+        "oversized_enabled": False,
+        "oversized": {},
         # pdf generation options
         "pagesize": (
             default_page_size if default_page_size in page_sizes else "Letter"
@@ -56,6 +59,10 @@ def init_dict(print_dict, img_dict):
             stale_images.append(img)
     for img in stale_images:
         del print_dict["cards"][img]
+        if img in print_dict["backsides"]:
+            del print_dict["backsides"][img]
+        if img in print_dict["oversized"]:
+            del print_dict["oversized"][img]
 
     # Make sure we have a sensible bleed edge
     bleed_edge = str(print_dict["bleed_edge"])

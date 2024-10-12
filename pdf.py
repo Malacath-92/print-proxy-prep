@@ -201,7 +201,7 @@ def distribute_cards_to_pages(print_dict, columns, rows):
     # throw all images n times into a list
     images = []
     for img, num in print_dict["cards"].items():
-        is_oversized = (
+        is_oversized = print_dict["oversized_enabled"] and (
             print_dict["oversized"][img] if img in print_dict["oversized"] else False
         )
         images.extend([(img, is_oversized)] * num)

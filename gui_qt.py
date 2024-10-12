@@ -575,6 +575,24 @@ class CardWidget(QWidget):
         layout.addWidget(card_widget)
         layout.addWidget(number_area)
 
+        if print_dict["oversized_enabled"]:
+            is_oversized = (
+                print_dict["oversized"][card_name]
+                if card_name in print_dict["oversized"]
+                else False
+            )
+            oversized_button = QCheckBox("Oversized")
+            oversized_button.setChecked(is_oversized)
+            oversized_button.setToolTip("Oversized")
+            oversized_button.setFixedHeight(20)
+            oversized_button.checkStateChanged.connect(
+                functools.partial(self.toggle_oversized, print_dict)
+            )
+            self._oversized_button = oversized_button
+            layout.addWidget(oversized_button)
+        else:
+            self._oversized_button = None
+
         self.setLayout(layout)
 
         palette = self.palette()
@@ -606,9 +624,12 @@ class CardWidget(QWidget):
         img_width = width - margins.left() - margins.right()
         img_height = self._img_widget.heightForWidth(img_width)
 
-        number_height = self._number_area.height()
+        additional_widgets = self._number_area.height() + spacing
 
-        return img_height + number_height + margins.top() + margins.bottom() + spacing
+        if self._oversized_button:
+            additional_widgets += self._oversized_button.height() + spacing
+
+        return img_height + additional_widgets + margins.top() + margins.bottom()
 
     def apply_number(self, print_dict, number):
         self._number_edit.setText(str(number))
@@ -629,6 +650,9 @@ class CardWidget(QWidget):
         number = min(number, 999)
         self.apply_number(print_dict, number)
 
+    def toggle_oversized(self, print_dict, s):
+        print_dict["oversized"][self._card_name] = s == QtCore.Qt.CheckState.Checked
+
 
 class DummyCardWidget(CardWidget):
     def __init__(self, print_dict, img_dict):
@@ -645,6 +669,9 @@ class DummyCardWidget(CardWidget):
         pass
 
     def inc_number(self, print_dict):
+        pass
+
+    def toggle_oversized(self, print_dict, s):
         pass
 
 
@@ -1294,11 +1321,7 @@ class PrintOptionsWidget(QGroupBox):
             "&Orientation", ["Landscape", "Portrait"], print_dict["orient"]
         )
         guides_checkbox = QCheckBox("Extended Guides")
-        guides_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if print_dict["extended_guides"]
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        guides_checkbox.setChecked(print_dict["extended_guides"])
 
         layout = QVBoxLayout()
         layout.addWidget(print_output)
@@ -1326,7 +1349,7 @@ class PrintOptionsWidget(QGroupBox):
         print_output._widget.textChanged.connect(change_output)
         paper_size._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
-        guides_checkbox.stateChanged.connect(change_guides)
+        guides_checkbox.checkStateChanged.connect(change_guides)
 
         self._print_output = print_output._widget
         self._paper_size = paper_size._widget
@@ -1337,11 +1360,7 @@ class PrintOptionsWidget(QGroupBox):
         self._print_output.setText(print_dict["filename"])
         self._paper_size.setCurrentText(print_dict["pagesize"])
         self._orientation.setCurrentText(print_dict["orient"])
-        self._guides_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if print_dict["extended_guides"]
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        self._guides_checkbox.setChecked(print_dict["extended_guides"])
 
 
 class BacksidePreview(QWidget):
@@ -1394,17 +1413,14 @@ class CardOptionsWidget(QGroupBox):
         bleed_edge_spin.setValue(float(print_dict["bleed_edge"]))
         bleed_edge = WidgetWithLabel("&Bleed Edge", bleed_edge_spin)
 
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
+        bleed_back_divider = QFrame()
+        bleed_back_divider.setFrameShape(QFrame.Shape.HLine)
+        bleed_back_divider.setFrameShadow(QFrame.Shadow.Sunken)
 
         backside_enabled = print_dict["backside_enabled"]
         backside_checkbox = QCheckBox("Enable Backside")
-        backside_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if backside_enabled
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        backside_checkbox.setChecked(backside_enabled)
+
         backside_default_button = QPushButton("Default")
         backside_default_preview = BacksidePreview(
             print_dict["backside_default"], img_dict
@@ -1422,13 +1438,23 @@ class CardOptionsWidget(QGroupBox):
         backside_default_preview.setEnabled(backside_enabled)
         backside_offset.setEnabled(backside_enabled)
 
+        back_over_divider = QFrame()
+        back_over_divider.setFrameShape(QFrame.Shape.HLine)
+        back_over_divider.setFrameShadow(QFrame.Shadow.Sunken)
+
+        oversized_enabled = print_dict["oversized_enabled"]
+        oversized_checkbox = QCheckBox("Enable Oversized Option")
+        oversized_checkbox.setChecked(oversized_enabled)
+
         layout = QVBoxLayout()
         layout.addWidget(bleed_edge)
-        layout.addWidget(divider)
+        layout.addWidget(bleed_back_divider)
         layout.addWidget(backside_checkbox)
         layout.addWidget(backside_default_button)
         layout.addWidget(backside_default_preview)
         layout.addWidget(backside_offset)
+        layout.addWidget(back_over_divider)
+        layout.addWidget(oversized_checkbox)
 
         layout.setAlignment(
             backside_default_preview, QtCore.Qt.AlignmentFlag.AlignHCenter
@@ -1440,7 +1466,7 @@ class CardOptionsWidget(QGroupBox):
             print_dict["bleed_edge"] = v
             self.window().refresh_preview(print_dict, img_dict)
 
-        def switch_default_backside(s):
+        def switch_backside_enabled(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             print_dict["backside_enabled"] = enabled
             backside_default_button.setEnabled(enabled)
@@ -1460,24 +1486,28 @@ class CardOptionsWidget(QGroupBox):
             print_dict["backside_offset"] = v
             self.window().refresh_preview(print_dict, img_dict)
 
+        def switch_oversized_enabled(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            print_dict["oversized_enabled"] = enabled
+            self.window().refresh(print_dict, img_dict)
+
         bleed_edge_spin.valueChanged.connect(change_bleed_edge)
-        backside_checkbox.checkStateChanged.connect(switch_default_backside)
+        backside_checkbox.checkStateChanged.connect(switch_backside_enabled)
         backside_default_button.clicked.connect(pick_backside)
         backside_offset_spin.valueChanged.connect(change_backside_offset)
+        oversized_checkbox.checkStateChanged.connect(switch_oversized_enabled)
 
         self._bleed_edge_spin = bleed_edge_spin
         self._backside_checkbox = backside_checkbox
         self._backside_offset_spin = backside_offset_spin
         self._backside_default_preview = backside_default_preview
+        self._oversized_checkbox = oversized_checkbox
 
     def refresh_widgets(self, print_dict):
         self._bleed_edge_spin.setValue(float(print_dict["bleed_edge"]))
-        self._backside_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if print_dict["backside_enabled"]
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        self._backside_checkbox.setChecked(print_dict["backside_enabled"])
         self._backside_offset_spin.setValue(float(print_dict["backside_offset"]))
+        self._oversized_checkbox.setChecked(print_dict["oversized_enabled"])
 
     def refresh(self, print_dict, img_dict):
         self._backside_default_preview.refresh(print_dict["backside_default"], img_dict)
@@ -1498,21 +1528,13 @@ class GlobalOptionsWidget(QGroupBox):
         display_columns.setToolTip("Number columns in card view")
 
         precropped_checkbox = QCheckBox("Allow Precropped")
-        precropped_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if CFG.EnableUncrop
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        precropped_checkbox.setChecked(CFG.EnableUncrop)
         precropped_checkbox.setToolTip(
             "Allows putting pre-cropped images into images/crop"
         )
 
         vibrance_checkbox = QCheckBox("Vibrance Bump")
-        vibrance_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if CFG.VibranceBump
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        vibrance_checkbox.setChecked(CFG.VibranceBump)
         vibrance_checkbox.setToolTip("Requires rerunning cropper")
 
         max_dpi_spin_box = QDoubleSpinBox()
