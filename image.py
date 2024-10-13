@@ -3,6 +3,7 @@ import cv2
 import json
 import numpy
 import base64
+from enum import Enum
 
 from PIL import Image, ImageFilter
 
@@ -41,10 +42,21 @@ def init_image_folder(image_dir, crop_dir):
             os.mkdir(folder)
 
 
-def rotate_image(img, clockwise):
-    return cv2.rotate(
-        img, cv2.ROTATE_90_CLOCKWISE if clockwise else cv2.ROTATE_90_COUNTERCLOCKWISE
-    )
+class Rotation(Enum):
+    RotateClockwise_90 = (0,)
+    RotateCounterClockwise_90 = (1,)
+    Rotate_180 = (2,)
+
+
+def rotate_image(img, rotation):
+    match rotation:
+        case Rotation.RotateClockwise_90:
+            rotation = cv2.ROTATE_90_CLOCKWISE
+        case Rotation.RotateCounterClockwise_90:
+            rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
+        case Rotation.Rotate_180:
+            rotation = cv2.ROTATE_180
+    return cv2.rotate(img, rotation)
 
 
 def read_image(path):

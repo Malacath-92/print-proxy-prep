@@ -21,6 +21,7 @@ def init_dict(print_dict, img_dict):
         "backside_default": "__back.png",
         "backside_offset": "0",
         "backsides": {},
+        "backside_short_edge": {},
         # oversized options
         "oversized_enabled": False,
         "oversized": {},
@@ -61,6 +62,8 @@ def init_dict(print_dict, img_dict):
         del print_dict["cards"][img]
         if img in print_dict["backsides"]:
             del print_dict["backsides"][img]
+        if img in print_dict["backside_short_edge"]:
+            del print_dict["backside_short_edge"][img]
         if img in print_dict["oversized"]:
             del print_dict["oversized"][img]
 

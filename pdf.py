@@ -9,7 +9,7 @@ from reportlab.lib.utils import ImageReader
 from util import *
 from config import CFG
 from constants import *
-from image import read_image, image_to_bytes, rotate_image
+from image import read_image, image_to_bytes, rotate_image, Rotation
 
 
 class CrossSegment(Enum):
@@ -73,9 +73,12 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     extended_guides = print_dict["extended_guides"]
 
     @cache
-    def get_rotated_img(img_path, flipped):
+    def get_img(img_path, rotation):
+        if rotation is None:
+            return img_path
+
         img = read_image(img_path)
-        img = rotate_image(img, True)
+        img = rotate_image(img, rotation)
         img = image_to_bytes(img)
         img = ImageReader(io.BytesIO(img))
         return img
@@ -83,27 +86,29 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     for p, page_images in enumerate(images):
         render_fmt = "Rendering page {page}...\nImage number {img_idx} - {img_name}"
 
-        def draw_image(img, oversized, i, x, y, dx=0.0, dy=0.0, flipped=False):
+        def draw_image(
+            img, oversized, i, x, y, dx=0.0, dy=0.0, is_short_edge=False, backside=False
+        ):
             print_fn(render_fmt.format(page=p + 1, img_idx=i + 1, img_name=img))
             img_path = os.path.join(img_dir, img)
             if os.path.exists(img_path):
-                if oversized and flipped:
+                if oversized and backside:
                     x = x - 1
+
+                rotation = get_card_rotation(backside, is_oversized, is_short_edge)
+                img = get_img(img_path, rotation)
 
                 x = rx + x * w + dx
                 y = ry - y * h + dy - h
-                if oversized:
-                    img = get_rotated_img(img_path, flipped)
-                    cw = 2 * w
-                else:
-                    img = img_path
-                    cw = w
+                cw = cw = 2 * w if oversized else w
+                ch = h
+
                 pages.drawImage(
                     img,
                     x,
                     y,
                     cw,
-                    h,
+                    ch,
                 )
 
         def draw_cross_at_grid(ix, iy, segment, dx=0.0, dy=0.0):
@@ -126,11 +131,13 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
         for y in range(0, rows):
             for x in range(0, cols):
                 if card := card_grid[y][x]:
-                    (card_name, is_oversized) = card
+                    (card_name, is_short_edge, is_oversized) = card
                     if card_name is None:
                         continue
 
-                    draw_image(card_name, is_oversized, i, x, y)
+                    draw_image(
+                        card_name, is_oversized, i, x, y, is_short_edge=is_short_edge
+                    )
                     i = i + 1
 
                     if is_oversized:
@@ -163,7 +170,7 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
             for y in range(0, rows):
                 for x in range(0, cols):
                     if card := card_grid[y][x]:
-                        (card_name, is_oversized) = card
+                        (card_name, is_short_edge, is_oversized) = card
                         if card_name is None:
                             continue
 
@@ -183,9 +190,9 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
                             i,
                             cols - x - 1,
                             y,
-                            backside_offset,
-                            0,
-                            True,
+                            dx=backside_offset,
+                            is_short_edge=is_short_edge,
+                            backside=True,
                         )
 
             # Next page
@@ -198,13 +205,15 @@ def distribute_cards_to_pages(print_dict, columns, rows):
     images_per_page = columns * rows
     oversized_images_per_page = (columns // 2) * rows
 
+    short_edge_dict = print_dict["backside_short_edge"]
+    oversized_dict = print_dict["oversized"] if print_dict["oversized_enabled"] else {}
+
     # throw all images n times into a list
     images = []
     for img, num in print_dict["cards"].items():
-        is_oversized = print_dict["oversized_enabled"] and (
-            print_dict["oversized"][img] if img in print_dict["oversized"] else False
-        )
-        images.extend([(img, is_oversized)] * num)
+        is_short_edge = short_edge_dict[img] if img in short_edge_dict else False
+        is_oversized = oversized_dict[img] if img in oversized_dict else False
+        images.extend([(img, is_short_edge, is_oversized)] * num)
 
     # favor filling up with oversized cards first
     images = sorted(images, key=lambda x: not x[1])
@@ -227,7 +236,7 @@ def distribute_cards_to_pages(print_dict, columns, rows):
     pages = []
 
     unfinished_pages = []
-    for img, is_oversized in images:
+    for img, is_short_edge, is_oversized in images:
         # get a page that can fit this card
         page_with_space = next(
             filter(lambda x: page_has_space(x, is_oversized), unfinished_pages),
@@ -240,7 +249,9 @@ def distribute_cards_to_pages(print_dict, columns, rows):
             page_with_space = unfinished_pages[-1]
 
         # add the image to the page
-        page_with_space["oversized" if is_oversized else "regular"].append(img)
+        page_with_space["oversized" if is_oversized else "regular"].append(
+            (img, is_short_edge)
+        )
 
         # push full page into final list
         if is_page_full(page_with_space):
@@ -252,6 +263,24 @@ def distribute_cards_to_pages(print_dict, columns, rows):
     return pages
 
 
+def make_backside_pages(print_dict, pages):
+    back_dict = print_dict["backsides"]
+
+    def backside_of_img(img_pair):
+        (img, is_short_edge) = img_pair
+        return (
+            (back_dict[img] if img in back_dict else print_dict["backside_default"]),
+            is_short_edge,
+        )
+
+    backside_pages = deepcopy(pages)
+    for page in backside_pages:
+        page["regular"] = [backside_of_img(img) for img in page["regular"]]
+        page["oversized"] = [backside_of_img(img) for img in page["oversized"]]
+
+    return backside_pages
+
+
 def distribute_cards_to_grid(cards, left_to_right, columns, rows):
     def get_coord(i):
         return get_grid_coords(i, columns, left_to_right)
@@ -259,7 +288,7 @@ def distribute_cards_to_grid(cards, left_to_right, columns, rows):
     card_grid = [[None] * columns for i in range(rows)]
 
     k = 0
-    for card_name in cards["oversized"]:
+    for card_name, is_short_edge in cards["oversized"]:
         x, y = get_coord(k)
 
         # find slot that fits an oversized card
@@ -267,13 +296,13 @@ def distribute_cards_to_grid(cards, left_to_right, columns, rows):
             k = k + 1
             x, y = get_coord(k)
 
-        card_grid[x][y] = (card_name, True)
-        card_grid[x][y + 1] = (None, None)
+        card_grid[x][y] = (card_name, is_short_edge, True)
+        card_grid[x][y + 1] = (None, None, None)
         k = k + 2
     del k
 
     i = 0
-    for card_name in cards["regular"]:
+    for card_name, is_short_edge in cards["regular"]:
         x, y = get_coord(i)
 
         # find slot that is free for single card
@@ -281,7 +310,7 @@ def distribute_cards_to_grid(cards, left_to_right, columns, rows):
             i = i + 1
             x, y = get_coord(i)
 
-        card_grid[x][y] = (card_name, False)
+        card_grid[x][y] = (card_name, is_short_edge, False)
         i = i + 1
     del i
 
@@ -293,3 +322,18 @@ def get_grid_coords(idx, columns, left_to_right):
     if not left_to_right:
         y = columns - y - 1
     return x, y
+
+
+def get_card_rotation(backside, is_oversized, is_short_edge):
+    if backside:
+        if is_short_edge:
+            if is_oversized:
+                return Rotation.RotateClockwise_90
+            else:
+                return Rotation.Rotate_180
+        elif is_oversized:
+            return Rotation.RotateCounterClockwise_90
+    elif is_oversized:
+        return Rotation.RotateClockwise_90
+
+    return None

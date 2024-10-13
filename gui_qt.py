@@ -319,9 +319,7 @@ class MainWindow(QMainWindow):
 
 
 class CardImage(QLabel):
-    def __init__(
-        self, img_data, img_size, round_corners=True, rotate=False, flipped=False
-    ):
+    def __init__(self, img_data, img_size, round_corners=True, rotation=False):
         super().__init__()
 
         raw_pixmap = QPixmap()
@@ -356,13 +354,16 @@ class CardImage(QLabel):
 
             pixmap = clipped_pixmap
 
-        if rotate:
+        if rotation is not None:
+            match rotation:
+                case image.Rotation.RotateClockwise_90:
+                    rotation = 90
+                case image.Rotation.RotateCounterClockwise_90:
+                    rotation = -90
+                case image.Rotation.Rotate_180:
+                    rotation = 180
             transform = QTransform()
-            transform.rotate(-90 if flipped else 90)
-            pixmap = pixmap.transformed(transform)
-        elif flipped:
-            transform = QTransform()
-            transform.rotate(180)
+            transform.rotate(rotation)
             pixmap = pixmap.transformed(transform)
 
         self.setPixmap(pixmap)
@@ -373,7 +374,7 @@ class CardImage(QLabel):
         self.setScaledContents(True)
         self.setMinimumWidth(card_size_minimum_width_pixels)
 
-        self._rotated = rotate
+        self._rotated = rotation in [-90, 90]
 
     def heightForWidth(self, width):
         if self._rotated:
@@ -514,8 +515,11 @@ class CardWidget(QWidget):
             img_size = fallback.size
         img = CardImage(img_data, img_size)
 
+        backside_enabled = print_dict["backside_enabled"]
+        oversized_enabled = print_dict["oversized_enabled"]
+
         backside_img = None
-        if print_dict["backside_enabled"]:
+        if backside_enabled:
             backside_name = (
                 print_dict["backsides"][card_name]
                 if card_name in print_dict["backsides"]
@@ -574,28 +578,65 @@ class CardWidget(QWidget):
         else:
             card_widget = img
 
+        if backside_enabled or oversized_enabled:
+            extra_options = []
+
+            if backside_enabled:
+                is_short_edge = (
+                    print_dict["backside_short_edge"][card_name]
+                    if card_name in print_dict["backside_short_edge"]
+                    else False
+                )
+                short_edge_checkbox = QCheckBox("Sideways")
+                short_edge_checkbox.setChecked(is_short_edge)
+                short_edge_checkbox.setToolTip(
+                    "Determines whether to flip backside on short edge"
+                )
+
+                short_edge_checkbox.checkStateChanged.connect(
+                    functools.partial(self.toggle_short_edge, print_dict)
+                )
+
+                extra_options.append(short_edge_checkbox)
+
+            if oversized_enabled:
+                is_oversized = (
+                    print_dict["oversized"][card_name]
+                    if card_name in print_dict["oversized"]
+                    else False
+                )
+                oversized_checkbox = QCheckBox("Big")
+                oversized_checkbox.setToolTip(
+                    "Determines whether this is an oversized card"
+                )
+                oversized_checkbox.setChecked(is_oversized)
+
+                oversized_checkbox.checkStateChanged.connect(
+                    functools.partial(self.toggle_oversized, print_dict)
+                )
+
+                extra_options.append(oversized_checkbox)
+
+            extra_options_layout = QHBoxLayout()
+            extra_options_layout.addStretch()
+            for opt in extra_options:
+                extra_options_layout.addWidget(opt)
+            extra_options_layout.addStretch()
+            extra_options_layout.setContentsMargins(0, 0, 0, 0)
+
+            extra_options_area = QWidget()
+            extra_options_area.setLayout(extra_options_layout)
+            extra_options_area.setFixedHeight(20)
+
+            self._extra_options_area = extra_options_area
+        else:
+            self._extra_options_area = None
+
         layout = QVBoxLayout()
         layout.addWidget(card_widget)
         layout.addWidget(number_area)
-
-        if print_dict["oversized_enabled"]:
-            is_oversized = (
-                print_dict["oversized"][card_name]
-                if card_name in print_dict["oversized"]
-                else False
-            )
-            oversized_button = QCheckBox("Oversized")
-            oversized_button.setChecked(is_oversized)
-            oversized_button.setToolTip("Oversized")
-            oversized_button.setFixedHeight(20)
-            oversized_button.checkStateChanged.connect(
-                functools.partial(self.toggle_oversized, print_dict)
-            )
-            self._oversized_button = oversized_button
-            layout.addWidget(oversized_button)
-        else:
-            self._oversized_button = None
-
+        if extra_options_area is not None:
+            layout.addWidget(extra_options_area)
         self.setLayout(layout)
 
         palette = self.palette()
@@ -629,8 +670,8 @@ class CardWidget(QWidget):
 
         additional_widgets = self._number_area.height() + spacing
 
-        if self._oversized_button:
-            additional_widgets += self._oversized_button.height() + spacing
+        if self._extra_options_area:
+            additional_widgets += self._extra_options_area.height() + spacing
 
         return img_height + additional_widgets + margins.top() + margins.bottom()
 
@@ -653,8 +694,19 @@ class CardWidget(QWidget):
         number = min(number, 999)
         self.apply_number(print_dict, number)
 
+    def toggle_short_edge(self, print_dict, s):
+        short_edge_dict = print_dict["backside_short_edge"]
+        if s == QtCore.Qt.CheckState.Checked:
+            short_edge_dict[self._card_name] = True
+        elif self._card_name in short_edge_dict:
+            del short_edge_dict[self._card_name]
+
     def toggle_oversized(self, print_dict, s):
-        print_dict["oversized"][self._card_name] = s == QtCore.Qt.CheckState.Checked
+        oversized_dict = print_dict["oversized"]
+        if s == QtCore.Qt.CheckState.Checked:
+            oversized_dict[self._card_name] = True
+        elif self._card_name in oversized_dict:
+            del oversized_dict[self._card_name]
 
 
 class DummyCardWidget(CardWidget):
@@ -845,13 +897,14 @@ class CardScrollArea(QScrollArea):
 
 
 class PageGrid(QWidget):
-    def __init__(self, cards, left_to_right, columns, rows, bleed_edge_mm, img_get):
+    def __init__(self, cards, backside, columns, rows, bleed_edge_mm, img_get):
         super().__init__()
 
         grid = QGridLayout()
         grid.setSpacing(0)
         grid.setContentsMargins(0, 0, 0, 0)
 
+        left_to_right = not backside
         card_grid = pdf.distribute_cards_to_grid(cards, left_to_right, columns, rows)
 
         has_missing_preview = False
@@ -859,7 +912,7 @@ class PageGrid(QWidget):
         for x in range(0, rows):
             for y in range(0, columns):
                 if card := card_grid[x][y]:
-                    (card_name, is_oversized) = card
+                    (card_name, is_short_edge, is_oversized) = card
                     if card_name is None:
                         continue
 
@@ -868,12 +921,15 @@ class PageGrid(QWidget):
                         img_data, img_size = fallback.data, fallback.size
                         has_missing_preview = True
 
+                    rotation = pdf.get_card_rotation(
+                        backside, is_oversized, is_short_edge
+                    )
+
                     img = CardImage(
                         img_data,
                         img_size,
                         round_corners=False,
-                        rotate=is_oversized,
-                        flipped=False,
+                        rotation=rotation,
                     )
 
                     if is_oversized:
@@ -883,7 +939,7 @@ class PageGrid(QWidget):
 
         # pad with dummy images if we have only one uncompleted row
         for i in range(0, columns):
-            x, y = pdf.get_grid_coords(i, columns, left_to_right)
+            x, y = pdf.get_grid_coords(i, columns, backside)
             if grid.itemAtPosition(x, y) is None:
                 img_data = fallback.data
                 img_size = fallback.size
@@ -898,6 +954,8 @@ class PageGrid(QWidget):
 
         for i in range(0, grid.columnCount()):
             grid.setColumnStretch(i, 1)
+        for i in range(0, grid.rowCount()):
+            grid.setRowStretch(i, 1)
 
         self.setLayout(grid)
 
@@ -921,11 +979,18 @@ class PageGrid(QWidget):
 
 class PagePreview(QWidget):
     def __init__(
-        self, cards, left_to_right, columns, rows, bleed_edge_mm, page_size, img_get
+        self,
+        cards,
+        backside,
+        columns,
+        rows,
+        bleed_edge_mm,
+        page_size,
+        img_get,
     ):
         super().__init__()
 
-        grid = PageGrid(cards, left_to_right, columns, rows, bleed_edge_mm, img_get)
+        grid = PageGrid(cards, backside, columns, rows, bleed_edge_mm, img_get)
 
         layout = QVBoxLayout()
         layout.setSpacing(0)
@@ -1005,37 +1070,28 @@ class PrintPreview(QScrollArea):
         columns = int(page_width // card_width)
         rows = int(page_height // card_height)
 
-        pages = pdf.distribute_cards_to_pages(print_dict, columns, rows)
-
+        raw_pages = pdf.distribute_cards_to_pages(print_dict, columns, rows)
         pages = [
             {
                 "cards": page,
-                "left_to_right": True,
+                "backside": False,
             }
-            for page in pages
+            for page in raw_pages
         ]
 
         if print_dict["backside_enabled"]:
-            back_dict = print_dict["backsides"]
+            backside_pages = pdf.make_backside_pages(print_dict, raw_pages)
+            backside_pages = [
+                {
+                    "cards": page,
+                    "backside": True,
+                }
+                for page in backside_pages
+            ]
 
-            def backside_of_img(img):
-                return (
-                    back_dict[img]
-                    if img in back_dict
-                    else print_dict["backside_default"]
-                )
-
-            backside_pages = deepcopy(pages)
-            for page in backside_pages:
-                page["cards"]["regular"] = [
-                    backside_of_img(img) for img in page["cards"]["regular"]
-                ]
-                page["cards"]["oversized"] = [
-                    backside_of_img(img) for img in page["cards"]["oversized"]
-                ]
-                page["left_to_right"] = False
-
-            pages = [imgs for pair in zip(pages, backside_pages) for imgs in pair]
+            pages = [
+                page for page_pair in zip(pages, backside_pages) for page in page_pair
+            ]
 
         @functools.cache
         def img_get(card_name, bleed_edge):
@@ -1058,7 +1114,7 @@ class PrintPreview(QScrollArea):
         pages = [
             PagePreview(
                 page["cards"],
-                page["left_to_right"],
+                page["backside"],
                 columns,
                 rows,
                 bleed_edge,
