@@ -7,38 +7,38 @@ from util import *
 from config import *
 from constants import *
 
-app = None
-window = None
-img_dict = {}
-print_dict = {}
+def main():
+    app = None
+    img_dict = {}
+    print_dict = {}
 
 
-def init():
-    global img_dict
-    global print_dict
+    def init():
+        image.init()
 
-    image.init()
+        print_fn = (
+            gui_qt.make_popup_print_fn(loading_window)
+            if loading_window is not None
+            else print
+        )
 
-    print_fn = (
-        gui_qt.make_popup_print_fn(loading_window)
-        if loading_window is not None
-        else print
-    )
-
-    project.load(print_dict, img_dict, app.json_path(), print_fn)
+        project.load(print_dict, img_dict, app.json_path(), print_fn)
 
 
-app = gui_qt.init()
+    app = gui_qt.init()
 
-loading_window = gui_qt.popup(None, "Loading...")
-loading_window.show_during_work(init)
-del loading_window
+    loading_window = gui_qt.popup(None, "Loading...", app._debug_mode)
+    loading_window.show_during_work(init)
+    del loading_window
 
-window = gui_qt.window_setup(app, print_dict, img_dict)
+    window = gui_qt.window_setup(app, print_dict, img_dict)
 
-gui_qt.event_loop(app)
+    gui_qt.event_loop(app)
 
-with open(app.json_path(), "w") as fp:
-    json.dump(print_dict, fp)
+    with open(app.json_path(), "w") as fp:
+        json.dump(print_dict, fp)
 
-app.close()
+    app.close()
+
+if __name__ == "__main__":
+    main()

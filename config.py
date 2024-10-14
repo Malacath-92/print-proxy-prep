@@ -14,17 +14,16 @@ class GlobalConfig:
 
 def load_config() -> GlobalConfig:
     cfg_path = os.path.join(cwd, "config.ini")
-
     config_parser = configparser.ConfigParser()
-    config_parser.read(cfg_path)
 
-    def_cfg = config_parser["DEFAULT"]
     parsed_config = GlobalConfig()
-    parsed_config.VibranceBump = def_cfg.getboolean("Vibrance.Bump", False)
-    parsed_config.MaxDPI = def_cfg.getint("Max.DPI", 1200)
-    parsed_config.DefaultPageSize = def_cfg.get("Page.Size", "Letter")
-    parsed_config.EnableUncrop = def_cfg.getboolean("Enable.Uncrop", True)
-    parsed_config.DisplayColumns = def_cfg.getint("Display.Columns", 5)
+    if config_parser.read(cfg_path):
+        def_cfg = config_parser["DEFAULT"]
+        parsed_config.VibranceBump = def_cfg.getboolean("Vibrance.Bump", False)
+        parsed_config.MaxDPI = def_cfg.getint("Max.DPI", 1200)
+        parsed_config.DefaultPageSize = def_cfg.get("Page.Size", "Letter")
+        parsed_config.EnableUncrop = def_cfg.getboolean("Enable.Uncrop", True)
+        parsed_config.DisplayColumns = def_cfg.getint("Display.Columns", 5)
 
     return parsed_config
 

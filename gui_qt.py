@@ -60,6 +60,7 @@ class PrintProxyPrepApplication(QApplication):
 
         self._json_path = os.path.join(cwd, "print.json")
         self._settings_loaded = False
+        self._debug_mode = "--debug" in sys.argv
 
         self.load()
 
@@ -102,7 +103,7 @@ def init():
     return PrintProxyPrepApplication(sys.argv)
 
 
-def popup(window, middle_text):
+def popup(window, middle_text, debug_thread):
     class PopupWindow(QDialog):
         def __init__(self, parent, text):
             super().__init__(parent)
@@ -156,9 +157,10 @@ def popup(window, middle_text):
                 _refresh = QtCore.pyqtSignal(str)
 
                 def run(self):
-                    import debugpy
+                    if debug_thread:
+                        import debugpy
 
-                    debugpy.debug_this_thread()
+                        debugpy.debug_this_thread()
 
                     work()
 
@@ -285,7 +287,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("PDF Proxy Printer")
 
-        icon = QIcon("proxy.png")
+        icon = QIcon(resource_path() + "/proxy.png")
         self.setWindowIcon(icon)
         if sys.platform == "win32":
             import ctypes
@@ -635,7 +637,7 @@ class CardWidget(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(card_widget)
         layout.addWidget(number_area)
-        if extra_options_area is not None:
+        if self._extra_options_area is not None:
             layout.addWidget(extra_options_area)
         self.setLayout(layout)
 
@@ -1234,7 +1236,7 @@ class ActionsWidget(QGroupBox):
                     print(e)
 
             self.window().setEnabled(False)
-            render_window = popup(self.window(), "Rendering PDF...")
+            render_window = popup(self.window(), "Rendering PDF...", application._debug_mode)
             render_window.show_during_work(render_work)
             del render_window
             self.window().setEnabled(True)
@@ -1277,7 +1279,7 @@ class ActionsWidget(QGroupBox):
                         del print_dict["cards"][img]
 
                 self.window().setEnabled(False)
-                crop_window = popup(self.window(), "Cropping images...")
+                crop_window = popup(self.window(), "Cropping images...", application._debug_mode)
                 crop_window.show_during_work(cropper_work)
                 del crop_window
                 if self._rebuild_after_cropper:
@@ -1312,7 +1314,7 @@ class ActionsWidget(QGroupBox):
                     )
 
                 self.window().setEnabled(False)
-                reload_window = popup(self.window(), "Reloading project...")
+                reload_window = popup(self.window(), "Reloading project...", application._debug_mode)
                 reload_window.show_during_work(load_project)
                 del reload_window
                 self.window().refresh_widgets(print_dict)
@@ -1343,7 +1345,7 @@ class ActionsWidget(QGroupBox):
                         )
 
                     self.window().setEnabled(False)
-                    reload_window = popup(self.window(), "Reloading project...")
+                    reload_window = popup(self.window(), "Reloading project...", application._debug_mode)
                     reload_window.show_during_work(reload_work)
                     del reload_window
                     self.window().refresh(print_dict, img_dict)

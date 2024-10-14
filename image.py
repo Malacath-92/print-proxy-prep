@@ -25,7 +25,7 @@ def list_image_files(dir):
 
 
 def init():
-    with open(os.path.join(cwd, "vibrance.CUBE")) as f:
+    with open(os.path.join(resource_path(), "vibrance.CUBE")) as f:
         lut_raw = f.read().splitlines()[11:]
 
     lsize = round(len(lut_raw) ** (1 / 3))

@@ -2,7 +2,7 @@ import os
 
 from reportlab.lib.pagesizes import LETTER, A5, A4, A3, LEGAL
 
-cwd = os.path.dirname(__file__)
+cwd = os.getcwd()
 
 page_sizes = {"Letter": LETTER, "A5": A5, "A4": A4, "A3": A3, "Legal": LEGAL}
 
