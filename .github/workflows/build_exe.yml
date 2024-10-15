@@ -26,7 +26,7 @@ jobs:
 
       - name: Build exe
         run: |
-          python build-exe.py --package
+          python build_exe.py --package
 
       - name: Get version
         id: get_version
