@@ -5,12 +5,35 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File",
+            "name": "Python Debugger: Main",
             "type": "debugpy",
             "request": "launch",
             "program": "main.py",
+            "args": "--debug",
             "console": "integratedTerminal",
             "python": "venv/scripts/python.exe"
-        }
+        },
+
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "args": "--debug",
+            "console": "integratedTerminal",
+            "python": "venv/scripts/python.exe"
+        },
+        
+        {
+            "name": "Make Executable",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "build_exe.py",
+            "args": ["--debug", "--package"],
+            "cwd": "${workspaceFolder}/dist",
+            "console": "integratedTerminal",
+            "python": "venv/scripts/python.exe"
+        },
+        
     ]
 }

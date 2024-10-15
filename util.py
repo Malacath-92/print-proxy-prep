@@ -61,6 +61,7 @@ def cap_offset_str(offset):
 
 def open_folder(path):
     if os.path.isdir(path):
+        path = path if isinstance(path, str) else f"{path}"
         if sys.platform == "darwin":
             subprocess.call(["open", "--", path])
         elif sys.platform.startswith("linux"):
