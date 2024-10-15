@@ -1,3 +1,5 @@
 PyQt6
 reportlab
 opencv-python
+numpy==1.22.0
+pyinstaller==5.*
