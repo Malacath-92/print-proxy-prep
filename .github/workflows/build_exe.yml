@@ -1,0 +1,73 @@
+name: Build Windows Executable
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          # Python 3.8 is the latest version supporting Windows 7
+          #   should we downgrade to that?
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements_dev.txt
+
+      - name: Build exe
+        run: |
+          python build-exe.py --package
+
+      - name: Get version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+        shell: bash
+
+      - name: Extract Release Notes
+        id: extract_release_notes
+        uses: ffurrer2/extract-release-notes@v1
+
+      - name: Copy to release folder
+        shell: bash
+        run: |
+          mkdir dist/release
+          mv proxy.png dist/release/proxy.png
+          mv vibrance.CUBE dist/release/vibrance.CUBE
+          mv dist/print-proxy-prep.exe dist/release/print-proxy-prep.exe
+    
+      - name: Zip Release
+        run: |
+          cd dist/release
+          tar -a -c -f ../print_proxy_prep_${{ steps.get_version.outputs.VERSION }}.zip *
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ steps.extract_release_notes.outputs.release_notes }}
+          draft: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./print_proxy_prep_${{ steps.get_version.outputs.VERSION }}.zip
+          asset_name: print_proxy_prep_${{ steps.get_version.outputs.VERSION }}.zip
+          asset_content_type: application/zip
+  

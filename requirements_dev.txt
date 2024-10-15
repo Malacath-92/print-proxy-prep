@@ -1,2 +1,3 @@
 nuitka
 imageio
+debugpy

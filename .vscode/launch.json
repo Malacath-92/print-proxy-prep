@@ -29,8 +29,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "build_exe.py",
-            "args": ["--debug", "--package"],
-            "cwd": "${workspaceFolder}/dist",
+            "args": ["--debug"],
             "console": "integratedTerminal",
             "python": "venv/scripts/python.exe"
         },

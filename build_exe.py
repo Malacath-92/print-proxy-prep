@@ -5,17 +5,8 @@ from pathlib import Path
 from util import open_folder
 
 
-DIST_DIR = Path(__file__).parent.resolve()
-
-
-def get_base_dir():
-    base_dir = DIST_DIR
-    while not (base_dir / "main.py").exists():
-        base_dir = base_dir.parent
-    return base_dir.resolve()
-
-
-BASE_DIR = get_base_dir()
+BASE_DIR = Path(__file__).parent.resolve()
+DIST_DIR = BASE_DIR / "dist"
 
 EXE_NAME = Path("print-proxy-prep.exe")
 
@@ -32,6 +23,7 @@ def run_nuitka(debug, package):
         "--standalone",
         "--enable-plugin=pyqt6",
         "--output-filename=print-proxy-prep",
+        "--output-dir=dist",
         f"--windows-icon-from-ico={BASE_DIR / 'proxy.png'}",
         "--noinclude-unittest-mode=allow",
     ]
@@ -39,7 +31,7 @@ def run_nuitka(debug, package):
     if not debug:
         nuitka_args.append("--windows-console-mode=disable")
     else:
-        nuitka_args.append("--include-module=debugpy")
+        nuitka_args.append("--include-package=debugpy")
 
     if package:
         nuitka_args.extend(["--onefile", "--standalone"])
@@ -49,7 +41,7 @@ def run_nuitka(debug, package):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Build print-proxy-prep.exe, run from a subfolder in the project"
+        description="Build print-proxy-prep.exe, run from project root"
     )
     parser.add_argument(
         "--debug", action="store_true", help="Whether to build debug exe."
