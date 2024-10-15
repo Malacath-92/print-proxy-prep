@@ -1,3 +1,4 @@
+import sys
 import argparse
 import subprocess
 from pathlib import Path
@@ -12,11 +13,8 @@ EXE_NAME = Path("print-proxy-prep.exe")
 
 
 def run_nuitka(debug, package):
-    venv_path = BASE_DIR / "venv"
-    py_path = venv_path / "Scripts/python.exe"
-
     nuitka_args = [
-        py_path,
+        sys.executable,
         "-m",
         "nuitka",
         f"{BASE_DIR / 'main.py'}",
