@@ -3,6 +3,7 @@ import cv2
 import json
 import numpy
 import base64
+from enum import Enum
 
 from PIL import Image, ImageFilter
 
@@ -23,22 +24,39 @@ def list_image_files(dir):
     return list_files(dir, valid_image_extensions)
 
 
-def init(image_dir, crop_dir):
+def init():
+    with open(os.path.join(resource_path(), "vibrance.CUBE")) as f:
+        lut_raw = f.read().splitlines()[11:]
+
+    lsize = round(len(lut_raw) ** (1 / 3))
+    row2val = lambda row: tuple([float(val) for val in row.split(" ")])
+    lut_table = [row2val(row) for row in lut_raw]
+
+    global vibrance_cube
+    vibrance_cube = ImageFilter.Color3DLUT(lsize, lut_table)
+
+
+def init_image_folder(image_dir, crop_dir):
     for folder in [image_dir, crop_dir]:
         if not os.path.exists(folder):
             os.mkdir(folder)
 
-    def load_vibrance_cube():
-        with open(os.path.join(cwd, "vibrance.CUBE")) as f:
-            lut_raw = f.read().splitlines()[11:]
-        lsize = round(len(lut_raw) ** (1 / 3))
-        row2val = lambda row: tuple([float(val) for val in row.split(" ")])
-        lut_table = [row2val(row) for row in lut_raw]
-        lut = ImageFilter.Color3DLUT(lsize, lut_table)
-        return lut
 
-    global vibrance_cube
-    vibrance_cube = load_vibrance_cube()
+class Rotation(Enum):
+    RotateClockwise_90 = (0,)
+    RotateCounterClockwise_90 = (1,)
+    Rotate_180 = (2,)
+
+
+def rotate_image(img, rotation):
+    match rotation:
+        case Rotation.RotateClockwise_90:
+            rotation = cv2.ROTATE_90_CLOCKWISE
+        case Rotation.RotateCounterClockwise_90:
+            rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
+        case Rotation.Rotate_180:
+            rotation = cv2.ROTATE_180
+    return cv2.rotate(img, rotation)
 
 
 def read_image(path):
@@ -215,6 +233,12 @@ def image_from_bytes(bytes):
     return img
 
 
+def image_to_bytes(img):
+    _, buffer = cv2.imencode(".png", img)
+    bio = io.BytesIO(buffer)
+    return bio.getvalue()
+
+
 def to_bytes(file_or_bytes, resize=None):
     if isinstance(file_or_bytes, numpy.ndarray):
         img = file_or_bytes
@@ -233,9 +257,7 @@ def to_bytes(file_or_bytes, resize=None):
             interpolation=cv2.INTER_AREA,
         )
         cur_height, cur_width = new_height, new_width
-    _, buffer = cv2.imencode(".png", img)
-    bio = io.BytesIO(buffer)
-    return bio.getvalue(), (cur_width, cur_height)
+    return image_to_bytes(img), (cur_width, cur_height)
 
 
 def need_cache_previews(crop_dir, img_dict):

@@ -3,12 +3,21 @@ import re
 import sys
 import math
 import json
-import shutil
 import functools
 import subprocess
+from enum import Enum
+from copy import deepcopy
 
 import PyQt6.QtCore as QtCore
-from PyQt6.QtGui import QPixmap, QIntValidator, QPainter, QPainterPath, QCursor, QIcon
+from PyQt6.QtGui import (
+    QPixmap,
+    QIntValidator,
+    QPainter,
+    QPainterPath,
+    QCursor,
+    QIcon,
+    QTransform,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -38,17 +47,63 @@ from PyQt6.QtWidgets import (
 
 import pdf
 import image
+import project
 from util import *
+from config import *
 from constants import *
 import fallback_image as fallback
 
 
+class PrintProxyPrepApplication(QApplication):
+    def __init__(self, argv):
+        super().__init__(argv)
+
+        self._json_path = os.path.join(cwd, "print.json")
+        self._settings_loaded = False
+        self._debug_mode = "--debug" in sys.argv
+
+        self.load()
+
+    def close(self):
+        self.save()
+
+    def set_window(self, window):
+        self._window = window
+        if self._settings_loaded:
+            window.restoreGeometry(self._window_geometry)
+            window.restoreState(self._window_state)
+            self._window_geometry = None
+            self._window_state = None
+
+    def json_path(self):
+        return self._json_path
+
+    def set_json_path(self, json_path):
+        self._json_path = json_path
+
+    def save(self):
+        settings = QtCore.QSettings("Proxy", "PDF Proxy Printer")
+        settings.setValue("version", "1.0.0")
+        settings.setValue("geometry", self._window.saveGeometry())
+        settings.setValue("state", self._window.saveState())
+        settings.setValue("json", self._json_path)
+
+    def load(self):
+        settings = QtCore.QSettings("Proxy", "PDF Proxy Printer")
+        if settings.contains("version"):
+            self._window_geometry = settings.value("geometry")
+            self._window_state = settings.value("state")
+            if settings.contains("json"):
+                self._json_path = settings.value("json")
+
+            self._settings_loaded = True
+
+
 def init():
-    app = QApplication(sys.argv)
-    return app
+    return PrintProxyPrepApplication(sys.argv)
 
 
-def popup(window, middle_text):
+def popup(window, middle_text, debug_thread):
     class PopupWindow(QDialog):
         def __init__(self, parent, text):
             super().__init__(parent)
@@ -102,7 +157,7 @@ def popup(window, middle_text):
                 _refresh = QtCore.pyqtSignal(str)
 
                 def run(self):
-                    if is_debugger_attached():
+                    if debug_thread:
                         import debugpy
 
                         debugpy.debug_this_thread()
@@ -140,16 +195,54 @@ def make_popup_print_fn(popup):
     return popup_print_fn
 
 
-def image_file_dialog(parent=None):
-    choice = QFileDialog.getOpenFileName(
+def folder_dialog(parent=None):
+    choice = QFileDialog.getExistingDirectory(
         parent,
-        "Open Image",
-        "images",
-        f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
+        "Choose Folder",
+        ".",
+        QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks,
+    )
+    if choice != "":
+        return os.path.basename(choice)
+    else:
+        return None
+
+
+class FileDialogType(Enum):
+    Open = 0
+    Save = 1
+
+
+def file_dialog(parent, title, root, filter, type):
+    function = (
+        QFileDialog.getOpenFileName
+        if type == FileDialogType.Open
+        else QFileDialog.getSaveFileName
+    )
+    choice = function(
+        parent,
+        title,
+        root,
+        filter,
     )[0]
     if choice != "":
-        choice = os.path.basename(choice)
-    return choice
+        return os.path.basename(choice)
+    else:
+        return None
+
+
+def project_file_dialog(parent, type):
+    return file_dialog(parent, "Open Project", ".", "Json Files (*.json)", type)
+
+
+def image_file_dialog(parent, folder):
+    return file_dialog(
+        parent,
+        "Open Image",
+        folder,
+        f"Image Files ({' '.join(image.valid_image_extensions).replace('.', '*.')})",
+        FileDialogType.Open,
+    )
 
 
 class WidgetWithLabel(QWidget):
@@ -194,15 +287,13 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("PDF Proxy Printer")
 
-        icon = QIcon("proxy.png")
+        icon = QIcon(resource_path() + "/proxy.png")
         self.setWindowIcon(icon)
         if sys.platform == "win32":
             import ctypes
 
             myappid = "proxy.printer"  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-
-        self.loadState()
 
         window_layout = QHBoxLayout()
         window_layout.addWidget(tabs)
@@ -217,20 +308,8 @@ class MainWindow(QMainWindow):
         self._options = options
         self._print_preview = print_preview
 
-    def close(self):
-        self.saveSettings()
-
-    def saveSettings(self):
-        settings = QtCore.QSettings("Proxy", self.windowTitle())
-        settings.setValue("version", "1.0.0")
-        settings.setValue("geometry", self.saveGeometry())
-        settings.setValue("state", self.saveState())
-
-    def loadState(self):
-        settings = QtCore.QSettings("Proxy", self.windowTitle())
-        if settings.contains("version"):
-            self.restoreGeometry(settings.value("geometry"))
-            self.restoreState(settings.value("state"))
+    def refresh_widgets(self, print_dict):
+        self._options.refresh_widgets(print_dict)
 
     def refresh(self, print_dict, img_dict):
         self._scroll_area.refresh(print_dict, img_dict)
@@ -242,11 +321,12 @@ class MainWindow(QMainWindow):
 
 
 class CardImage(QLabel):
-    def __init__(self, img_data, img_size, round_corners=True):
+    def __init__(self, img_data, img_size, round_corners=True, rotation=False):
         super().__init__()
 
         raw_pixmap = QPixmap()
         raw_pixmap.loadFromData(img_data, "PNG")
+        pixmap = raw_pixmap
 
         card_size_minimum_width_pixels = 130
 
@@ -261,7 +341,7 @@ class CardImage(QLabel):
 
             path = QPainterPath()
             path.addRoundedRect(
-                QtCore.QRectF(raw_pixmap.rect()),
+                QtCore.QRectF(pixmap.rect()),
                 card_corner_radius_pixels,
                 card_corner_radius_pixels,
             )
@@ -271,12 +351,24 @@ class CardImage(QLabel):
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
             painter.setClipPath(path)
-            painter.drawPixmap(0, 0, raw_pixmap)
+            painter.drawPixmap(0, 0, pixmap)
             del painter
 
-            self.setPixmap(clipped_pixmap)
-        else:
-            self.setPixmap(raw_pixmap)
+            pixmap = clipped_pixmap
+
+        if rotation is not None:
+            match rotation:
+                case image.Rotation.RotateClockwise_90:
+                    rotation = 90
+                case image.Rotation.RotateCounterClockwise_90:
+                    rotation = -90
+                case image.Rotation.Rotate_180:
+                    rotation = 180
+            transform = QTransform()
+            transform.rotate(rotation)
+            pixmap = pixmap.transformed(transform)
+
+        self.setPixmap(pixmap)
 
         self.setSizePolicy(
             QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
@@ -284,8 +376,13 @@ class CardImage(QLabel):
         self.setScaledContents(True)
         self.setMinimumWidth(card_size_minimum_width_pixels)
 
+        self._rotated = rotation in [-90, 90]
+
     def heightForWidth(self, width):
-        return int(width / card_ratio)
+        if self._rotated:
+            return int(width * card_ratio)
+        else:
+            return int(width / card_ratio)
 
 
 class BacksideImage(CardImage):
@@ -420,8 +517,11 @@ class CardWidget(QWidget):
             img_size = fallback.size
         img = CardImage(img_data, img_size)
 
+        backside_enabled = print_dict["backside_enabled"]
+        oversized_enabled = print_dict["oversized_enabled"]
+
         backside_img = None
-        if print_dict["backside_enabled"]:
+        if backside_enabled:
             backside_name = (
                 print_dict["backsides"][card_name]
                 if card_name in print_dict["backsides"]
@@ -466,8 +566,8 @@ class CardWidget(QWidget):
                     card_widget.refresh_backside(new_backside_img)
 
             def backside_choose():
-                backside_choice = image_file_dialog(self)
-                if backside_choice != "" and (
+                backside_choice = image_file_dialog(self, print_dict["image_dir"])
+                if backside_choice is not None and (
                     card_name not in print_dict["backsides"]
                     or backside_choice != print_dict["backsides"][card_name]
                 ):
@@ -480,10 +580,65 @@ class CardWidget(QWidget):
         else:
             card_widget = img
 
+        if backside_enabled or oversized_enabled:
+            extra_options = []
+
+            if backside_enabled:
+                is_short_edge = (
+                    print_dict["backside_short_edge"][card_name]
+                    if card_name in print_dict["backside_short_edge"]
+                    else False
+                )
+                short_edge_checkbox = QCheckBox("Sideways")
+                short_edge_checkbox.setChecked(is_short_edge)
+                short_edge_checkbox.setToolTip(
+                    "Determines whether to flip backside on short edge"
+                )
+
+                short_edge_checkbox.checkStateChanged.connect(
+                    functools.partial(self.toggle_short_edge, print_dict)
+                )
+
+                extra_options.append(short_edge_checkbox)
+
+            if oversized_enabled:
+                is_oversized = (
+                    print_dict["oversized"][card_name]
+                    if card_name in print_dict["oversized"]
+                    else False
+                )
+                oversized_checkbox = QCheckBox("Big")
+                oversized_checkbox.setToolTip(
+                    "Determines whether this is an oversized card"
+                )
+                oversized_checkbox.setChecked(is_oversized)
+
+                oversized_checkbox.checkStateChanged.connect(
+                    functools.partial(self.toggle_oversized, print_dict)
+                )
+
+                extra_options.append(oversized_checkbox)
+
+            extra_options_layout = QHBoxLayout()
+            extra_options_layout.addStretch()
+            for opt in extra_options:
+                extra_options_layout.addWidget(opt)
+            extra_options_layout.addStretch()
+            extra_options_layout.setContentsMargins(0, 0, 0, 0)
+
+            extra_options_area = QWidget()
+            extra_options_area.setLayout(extra_options_layout)
+            extra_options_area.setFixedHeight(20)
+
+            self._extra_options_area = extra_options_area
+        else:
+            self._extra_options_area = None
+
         layout = QVBoxLayout()
         layout.addWidget(card_widget)
         layout.addWidget(number_area)
-
+        if self._extra_options_area is not None:
+            layout.addWidget(extra_options_area)
         self.setLayout(layout)
 
         palette = self.palette()
@@ -515,9 +670,12 @@ class CardWidget(QWidget):
         img_width = width - margins.left() - margins.right()
         img_height = self._img_widget.heightForWidth(img_width)
 
-        number_height = self._number_area.height()
+        additional_widgets = self._number_area.height() + spacing
 
-        return img_height + number_height + margins.top() + margins.bottom() + spacing
+        if self._extra_options_area:
+            additional_widgets += self._extra_options_area.height() + spacing
+
+        return img_height + additional_widgets + margins.top() + margins.bottom()
 
     def apply_number(self, print_dict, number):
         self._number_edit.setText(str(number))
@@ -538,6 +696,20 @@ class CardWidget(QWidget):
         number = min(number, 999)
         self.apply_number(print_dict, number)
 
+    def toggle_short_edge(self, print_dict, s):
+        short_edge_dict = print_dict["backside_short_edge"]
+        if s == QtCore.Qt.CheckState.Checked:
+            short_edge_dict[self._card_name] = True
+        elif self._card_name in short_edge_dict:
+            del short_edge_dict[self._card_name]
+
+    def toggle_oversized(self, print_dict, s):
+        oversized_dict = print_dict["oversized"]
+        if s == QtCore.Qt.CheckState.Checked:
+            oversized_dict[self._card_name] = True
+        elif self._card_name in oversized_dict:
+            del oversized_dict[self._card_name]
+
 
 class DummyCardWidget(CardWidget):
     def __init__(self, print_dict, img_dict):
@@ -554,6 +726,9 @@ class DummyCardWidget(CardWidget):
         pass
 
     def inc_number(self, print_dict):
+        pass
+
+    def toggle_oversized(self, print_dict, s):
         pass
 
 
@@ -724,38 +899,70 @@ class CardScrollArea(QScrollArea):
 
 
 class PageGrid(QWidget):
-    def __init__(self, cards, left_to_right, columns, rows, bleed_edge_mm, img_get):
+    def __init__(self, cards, backside, columns, rows, bleed_edge_mm, img_get):
         super().__init__()
 
         grid = QGridLayout()
         grid.setSpacing(0)
         grid.setContentsMargins(0, 0, 0, 0)
 
-        rows = math.ceil(len(cards) / columns)
+        left_to_right = not backside
+        card_grid = pdf.distribute_cards_to_grid(cards, left_to_right, columns, rows)
+
         has_missing_preview = False
 
-        i = 0
-        for card_name in cards:
-            x, y = divmod(i, columns)
-            if not left_to_right:
-                y = rows - y + 1
+        for x in range(0, rows):
+            for y in range(0, columns):
+                if card := card_grid[x][y]:
+                    (card_name, is_short_edge, is_oversized) = card
+                    if card_name is None:
+                        continue
 
-            img_data, img_size = img_get(card_name, bleed_edge_mm)
-            if img_data is None:
-                img_data, img_size = fallback.data, fallback.size
-                has_missing_preview = True
-            img = CardImage(img_data, img_size, round_corners=False)
+                    img_data, img_size = img_get(card_name, bleed_edge_mm)
+                    if img_data is None:
+                        img_data, img_size = fallback.data, fallback.size
+                        has_missing_preview = True
 
-            grid.addWidget(img, x, y)
-            i = i + 1
+                    rotation = pdf.get_card_rotation(
+                        backside, is_oversized, is_short_edge
+                    )
+
+                    img = CardImage(
+                        img_data,
+                        img_size,
+                        round_corners=False,
+                        rotation=rotation,
+                    )
+
+                    if is_oversized:
+                        grid.addWidget(img, x, y, 1, 2)
+                    else:
+                        grid.addWidget(img, x, y)
+
+        # pad with dummy images if we have only one uncompleted row
+        for i in range(0, columns):
+            x, y = pdf.get_grid_coords(i, columns, backside)
+            if grid.itemAtPosition(x, y) is None:
+                img_data = fallback.data
+                img_size = fallback.size
+
+                img = CardImage(img_data, img_size)
+                sp_retain = img.sizePolicy()
+                sp_retain.setRetainSizeWhenHidden(True)
+                img.setSizePolicy(sp_retain)
+                img.hide()
+
+                grid.addWidget(img, x, y)
+
+        for i in range(0, grid.columnCount()):
+            grid.setColumnStretch(i, 1)
+        for i in range(0, grid.rowCount()):
+            grid.setRowStretch(i, 1)
 
         self.setLayout(grid)
 
-        self._rows = rows
-        self._cols = min(columns, i)
-
-        self._actual_rows = math.ceil(i / columns)
-        self._expected_rows = rows
+        self._rows = grid.rowCount()
+        self._cols = grid.columnCount()
         self._has_missing_preview = has_missing_preview
 
     def hasMissingPreviews(self):
@@ -774,11 +981,18 @@ class PageGrid(QWidget):
 
 class PagePreview(QWidget):
     def __init__(
-        self, cards, left_to_right, columns, rows, bleed_edge_mm, page_size, img_get
+        self,
+        cards,
+        backside,
+        columns,
+        rows,
+        bleed_edge_mm,
+        page_size,
+        img_get,
     ):
         super().__init__()
 
-        grid = PageGrid(cards, left_to_right, columns, rows, bleed_edge_mm, img_get)
+        grid = PageGrid(cards, backside, columns, rows, bleed_edge_mm, img_get)
 
         layout = QVBoxLayout()
         layout.setSpacing(0)
@@ -857,31 +1071,29 @@ class PrintPreview(QScrollArea):
 
         columns = int(page_width // card_width)
         rows = int(page_height // card_height)
-        images_per_page = columns * rows
 
-        images = []
-        for img, num in print_dict["cards"].items():
-            images.extend([img] * num)
+        raw_pages = pdf.distribute_cards_to_pages(print_dict, columns, rows)
         pages = [
-            {"cards": images[i : i + images_per_page], "left_to_right": True}
-            for i in range(0, len(images), images_per_page)
+            {
+                "cards": page,
+                "backside": False,
+            }
+            for page in raw_pages
         ]
 
         if print_dict["backside_enabled"]:
-            back_dict = print_dict["backsides"]
-            backsides = []
-            for img, num in print_dict["cards"].items():
-                backside = (
-                    back_dict[img]
-                    if img in back_dict
-                    else print_dict["backside_default"]
-                )
-                backsides.extend([backside] * num)
+            backside_pages = pdf.make_backside_pages(print_dict, raw_pages)
             backside_pages = [
-                {"cards": backsides[i : i + images_per_page], "left_to_right": False}
-                for i in range(0, len(backsides), images_per_page)
+                {
+                    "cards": page,
+                    "backside": True,
+                }
+                for page in backside_pages
             ]
-            pages = [imgs for pair in zip(pages, backside_pages) for imgs in pair]
+
+            pages = [
+                page for page_pair in zip(pages, backside_pages) for page in page_pair
+            ]
 
         @functools.cache
         def img_get(card_name, bleed_edge):
@@ -904,7 +1116,7 @@ class PrintPreview(QScrollArea):
         pages = [
             PagePreview(
                 page["cards"],
-                page["left_to_right"],
+                page["backside"],
                 columns,
                 rows,
                 bleed_edge,
@@ -927,9 +1139,7 @@ class PrintPreview(QScrollArea):
             bleed_info.setStyleSheet("QLabel { color : red; }")
             header_layout.addWidget(bleed_info)
         if CFG.VibranceBump:
-            vibrance_info = QLabel(
-                "Preview does not respect 'Vibrance Bump' setting"
-            )
+            vibrance_info = QLabel("Preview does not respect 'Vibrance Bump' setting")
             vibrance_info.setStyleSheet("QLabel { color : red; }")
             header_layout.addWidget(vibrance_info)
 
@@ -951,12 +1161,9 @@ class PrintPreview(QScrollArea):
 class ActionsWidget(QGroupBox):
     def __init__(
         self,
-        image_dir,
-        crop_dir,
-        print_json,
+        application,
         print_dict,
         img_dict,
-        img_cache,
     ):
         super().__init__()
 
@@ -966,14 +1173,16 @@ class ActionsWidget(QGroupBox):
         render_button = QPushButton("Render Document")
         save_button = QPushButton("Save Project")
         load_button = QPushButton("Load Project")
-        images_button = QPushButton("Open Images")
+        set_images_button = QPushButton("Set Image Folder")
+        open_images_button = QPushButton("Open Images")
 
         buttons = [
             cropper_button,
             render_button,
             save_button,
             load_button,
-            images_button,
+            set_images_button,
+            open_images_button,
         ]
         minimum_width = max(map(lambda x: x.sizeHint().width(), buttons))
 
@@ -983,15 +1192,16 @@ class ActionsWidget(QGroupBox):
         layout.addWidget(cropper_button, 0, 0)
         layout.addWidget(render_button, 0, 1)
         layout.addWidget(save_button, 1, 0)
-        layout.addWidget(images_button, 1, 1)
-
-        # TODO: Missing this feature
-        # layout.addWidget(load_button, 2, 1)
+        layout.addWidget(load_button, 1, 1)
+        layout.addWidget(set_images_button, 2, 0)
+        layout.addWidget(open_images_button, 2, 1)
 
         self.setLayout(layout)
 
         def render():
             bleed_edge = float(print_dict["bleed_edge"])
+            image_dir = print_dict["image_dir"]
+            crop_dir = os.path.join(image_dir, "crop")
             if image.need_run_cropper(
                 image_dir, crop_dir, bleed_edge, CFG.VibranceBump
             ):
@@ -1026,13 +1236,16 @@ class ActionsWidget(QGroupBox):
                     print(e)
 
             self.window().setEnabled(False)
-            render_window = popup(self.window(), "Rendering PDF...")
+            render_window = popup(self.window(), "Rendering PDF...", application._debug_mode)
             render_window.show_during_work(render_work)
             del render_window
             self.window().setEnabled(True)
 
         def run_cropper():
             bleed_edge = float(print_dict["bleed_edge"])
+            image_dir = print_dict["image_dir"]
+            crop_dir = os.path.join(image_dir, "crop")
+            img_cache = print_dict["img_cache"]
             if image.need_run_cropper(
                 image_dir, crop_dir, bleed_edge, CFG.VibranceBump
             ):
@@ -1066,7 +1279,7 @@ class ActionsWidget(QGroupBox):
                         del print_dict["cards"][img]
 
                 self.window().setEnabled(False)
-                crop_window = popup(self.window(), "Cropping images...")
+                crop_window = popup(self.window(), "Cropping images...", application._debug_mode)
                 crop_window.show_during_work(cropper_work)
                 del crop_window
                 if self._rebuild_after_cropper:
@@ -1081,16 +1294,74 @@ class ActionsWidget(QGroupBox):
                 )
 
         def save_project():
-            with open(print_json, "w") as fp:
-                json.dump(print_dict, fp)
+            new_project_json = project_file_dialog(self, FileDialogType.Save)
+            if new_project_json is not None:
+                application.set_json_path(new_project_json)
+                with open(new_project_json, "w") as fp:
+                    json.dump(print_dict, fp)
+
+        def load_project():
+            new_project_json = project_file_dialog(self, FileDialogType.Open)
+            if new_project_json is not None and os.path.exists(new_project_json):
+                application.set_json_path(new_project_json)
+
+                def load_project():
+                    project.load(
+                        print_dict,
+                        img_dict,
+                        new_project_json,
+                        make_popup_print_fn(reload_window),
+                    )
+
+                self.window().setEnabled(False)
+                reload_window = popup(self.window(), "Reloading project...", application._debug_mode)
+                reload_window.show_during_work(load_project)
+                del reload_window
+                self.window().refresh_widgets(print_dict)
+                self.window().refresh(print_dict, img_dict)
+                self.window().setEnabled(True)
+
+        def set_images_folder():
+            new_image_dir = folder_dialog(self)
+            if new_image_dir is not None:
+                print_dict["image_dir"] = new_image_dir
+                if new_image_dir == "images":
+                    print_dict["img_cache"] = "img.cache"
+                else:
+                    print_dict["img_cache"] = f"{new_image_dir}.cache"
+
+                project.init_dict(print_dict, img_dict)
+
+                bleed_edge = float(print_dict["bleed_edge"])
+                image_dir = new_image_dir
+                crop_dir = os.path.join(image_dir, "crop")
+                if image.need_run_cropper(
+                    image_dir, crop_dir, bleed_edge, CFG.VibranceBump
+                ) or image.need_cache_previews(crop_dir, img_dict):
+
+                    def reload_work():
+                        project.init_images(
+                            print_dict, img_dict, make_popup_print_fn(reload_window)
+                        )
+
+                    self.window().setEnabled(False)
+                    reload_window = popup(self.window(), "Reloading project...", application._debug_mode)
+                    reload_window.show_during_work(reload_work)
+                    del reload_window
+                    self.window().refresh(print_dict, img_dict)
+                    self.window().setEnabled(True)
+                else:
+                    self.window().refresh(print_dict, img_dict)
 
         def open_images_folder():
-            open_folder(image_dir)
+            open_folder(print_dict["image_dir"])
 
         render_button.clicked.connect(render)
         cropper_button.clicked.connect(run_cropper)
         save_button.clicked.connect(save_project)
-        images_button.clicked.connect(open_images_folder)
+        load_button.clicked.connect(load_project)
+        set_images_button.clicked.connect(set_images_folder)
+        open_images_button.clicked.connect(open_images_folder)
 
         self._cropper_button = cropper_button
         self._rebuild_after_cropper = False
@@ -1104,22 +1375,18 @@ class PrintOptionsWidget(QGroupBox):
         self.setTitle("Print Options")
 
         print_output = LineEditWithLabel("PDF &Filename", print_dict["filename"])
-        paper_sizes = ComboBoxWithLabel(
+        paper_size = ComboBoxWithLabel(
             "&Paper Size", list(page_sizes.keys()), print_dict["pagesize"]
         )
         orientation = ComboBoxWithLabel(
             "&Orientation", ["Landscape", "Portrait"], print_dict["orient"]
         )
         guides_checkbox = QCheckBox("Extended Guides")
-        guides_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if print_dict["extended_guides"]
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        guides_checkbox.setChecked(print_dict["extended_guides"])
 
         layout = QVBoxLayout()
         layout.addWidget(print_output)
-        layout.addWidget(paper_sizes)
+        layout.addWidget(paper_size)
         layout.addWidget(orientation)
         layout.addWidget(guides_checkbox)
 
@@ -1141,9 +1408,20 @@ class PrintOptionsWidget(QGroupBox):
             print_dict["extended_guides"] = enabled
 
         print_output._widget.textChanged.connect(change_output)
-        paper_sizes._widget.currentTextChanged.connect(change_papersize)
+        paper_size._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
-        guides_checkbox.stateChanged.connect(change_guides)
+        guides_checkbox.checkStateChanged.connect(change_guides)
+
+        self._print_output = print_output._widget
+        self._paper_size = paper_size._widget
+        self._orientation = orientation._widget
+        self._guides_checkbox = guides_checkbox
+
+    def refresh_widgets(self, print_dict):
+        self._print_output.setText(print_dict["filename"])
+        self._paper_size.setCurrentText(print_dict["pagesize"])
+        self._orientation.setCurrentText(print_dict["orient"])
+        self._guides_checkbox.setChecked(print_dict["extended_guides"])
 
 
 class BacksidePreview(QWidget):
@@ -1196,17 +1474,14 @@ class CardOptionsWidget(QGroupBox):
         bleed_edge_spin.setValue(float(print_dict["bleed_edge"]))
         bleed_edge = WidgetWithLabel("&Bleed Edge", bleed_edge_spin)
 
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
+        bleed_back_divider = QFrame()
+        bleed_back_divider.setFrameShape(QFrame.Shape.HLine)
+        bleed_back_divider.setFrameShadow(QFrame.Shadow.Sunken)
 
         backside_enabled = print_dict["backside_enabled"]
         backside_checkbox = QCheckBox("Enable Backside")
-        backside_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if backside_enabled
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        backside_checkbox.setChecked(backside_enabled)
+
         backside_default_button = QPushButton("Default")
         backside_default_preview = BacksidePreview(
             print_dict["backside_default"], img_dict
@@ -1224,13 +1499,23 @@ class CardOptionsWidget(QGroupBox):
         backside_default_preview.setEnabled(backside_enabled)
         backside_offset.setEnabled(backside_enabled)
 
+        back_over_divider = QFrame()
+        back_over_divider.setFrameShape(QFrame.Shape.HLine)
+        back_over_divider.setFrameShadow(QFrame.Shadow.Sunken)
+
+        oversized_enabled = print_dict["oversized_enabled"]
+        oversized_checkbox = QCheckBox("Enable Oversized Option")
+        oversized_checkbox.setChecked(oversized_enabled)
+
         layout = QVBoxLayout()
         layout.addWidget(bleed_edge)
-        layout.addWidget(divider)
+        layout.addWidget(bleed_back_divider)
         layout.addWidget(backside_checkbox)
         layout.addWidget(backside_default_button)
         layout.addWidget(backside_default_preview)
         layout.addWidget(backside_offset)
+        layout.addWidget(back_over_divider)
+        layout.addWidget(oversized_checkbox)
 
         layout.setAlignment(
             backside_default_preview, QtCore.Qt.AlignmentFlag.AlignHCenter
@@ -1242,7 +1527,7 @@ class CardOptionsWidget(QGroupBox):
             print_dict["bleed_edge"] = v
             self.window().refresh_preview(print_dict, img_dict)
 
-        def switch_default_backside(s):
+        def switch_backside_enabled(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             print_dict["backside_enabled"] = enabled
             backside_default_button.setEnabled(enabled)
@@ -1250,8 +1535,8 @@ class CardOptionsWidget(QGroupBox):
             self.window().refresh(print_dict, img_dict)
 
         def pick_backside():
-            default_backside_choice = image_file_dialog(self)
-            if default_backside_choice != "":
+            default_backside_choice = image_file_dialog(self, print_dict["image_dir"])
+            if default_backside_choice is not None:
                 print_dict["backside_default"] = default_backside_choice
                 backside_default_preview.refresh(
                     print_dict["backside_default"], img_dict
@@ -1262,19 +1547,35 @@ class CardOptionsWidget(QGroupBox):
             print_dict["backside_offset"] = v
             self.window().refresh_preview(print_dict, img_dict)
 
+        def switch_oversized_enabled(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            print_dict["oversized_enabled"] = enabled
+            self.window().refresh(print_dict, img_dict)
+
         bleed_edge_spin.valueChanged.connect(change_bleed_edge)
-        backside_checkbox.checkStateChanged.connect(switch_default_backside)
+        backside_checkbox.checkStateChanged.connect(switch_backside_enabled)
         backside_default_button.clicked.connect(pick_backside)
         backside_offset_spin.valueChanged.connect(change_backside_offset)
+        oversized_checkbox.checkStateChanged.connect(switch_oversized_enabled)
 
+        self._bleed_edge_spin = bleed_edge_spin
+        self._backside_checkbox = backside_checkbox
+        self._backside_offset_spin = backside_offset_spin
         self._backside_default_preview = backside_default_preview
+        self._oversized_checkbox = oversized_checkbox
+
+    def refresh_widgets(self, print_dict):
+        self._bleed_edge_spin.setValue(float(print_dict["bleed_edge"]))
+        self._backside_checkbox.setChecked(print_dict["backside_enabled"])
+        self._backside_offset_spin.setValue(float(print_dict["backside_offset"]))
+        self._oversized_checkbox.setChecked(print_dict["oversized_enabled"])
 
     def refresh(self, print_dict, img_dict):
         self._backside_default_preview.refresh(print_dict["backside_default"], img_dict)
 
 
 class GlobalOptionsWidget(QGroupBox):
-    def __init__(self, crop_dir, img_cache, print_dict, img_dict):
+    def __init__(self, print_dict, img_dict):
         super().__init__()
 
         self.setTitle("Global Config")
@@ -1288,21 +1589,13 @@ class GlobalOptionsWidget(QGroupBox):
         display_columns.setToolTip("Number columns in card view")
 
         precropped_checkbox = QCheckBox("Allow Precropped")
-        precropped_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if CFG.EnableUncrop
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        precropped_checkbox.setChecked(CFG.EnableUncrop)
         precropped_checkbox.setToolTip(
             "Allows putting pre-cropped images into images/crop"
         )
 
         vibrance_checkbox = QCheckBox("Vibrance Bump")
-        vibrance_checkbox.setCheckState(
-            QtCore.Qt.CheckState.Checked
-            if CFG.VibranceBump
-            else QtCore.Qt.CheckState.Unchecked
-        )
+        vibrance_checkbox.setChecked(CFG.VibranceBump)
         vibrance_checkbox.setToolTip("Requires rerunning cropper")
 
         max_dpi_spin_box = QDoubleSpinBox()
@@ -1361,26 +1654,20 @@ class GlobalOptionsWidget(QGroupBox):
 class OptionsWidget(QWidget):
     def __init__(
         self,
-        image_dir,
-        crop_dir,
-        print_json,
+        application,
         print_dict,
         img_dict,
-        img_cache,
     ):
         super().__init__()
 
         actions_widget = ActionsWidget(
-            image_dir,
-            crop_dir,
-            print_json,
+            application,
             print_dict,
             img_dict,
-            img_cache,
         )
         print_options = PrintOptionsWidget(print_dict, img_dict)
         card_options = CardOptionsWidget(print_dict, img_dict)
-        global_options = GlobalOptionsWidget(crop_dir, img_cache, print_dict, img_dict)
+        global_options = GlobalOptionsWidget(print_dict, img_dict)
 
         layout = QVBoxLayout()
         layout.addWidget(actions_widget)
@@ -1392,7 +1679,12 @@ class OptionsWidget(QWidget):
         self.setLayout(layout)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
+        self._print_options = print_options
         self._card_options = card_options
+
+    def refresh_widgets(self, print_dict):
+        self._print_options.refresh_widgets(print_dict)
+        self._card_options.refresh_widgets(print_dict)
 
     def refresh(self, print_dict, img_dict):
         self._card_options.refresh(print_dict, img_dict)
@@ -1412,7 +1704,7 @@ class CardTabs(QTabWidget):
         self.currentChanged.connect(current_changed)
 
 
-def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cache):
+def window_setup(application, print_dict, img_dict):
     card_grid = CardGrid(print_dict, img_dict)
     scroll_area = CardScrollArea(print_dict, card_grid)
 
@@ -1420,16 +1712,14 @@ def window_setup(image_dir, crop_dir, print_json, print_dict, img_dict, img_cach
 
     tabs = CardTabs(print_dict, img_dict, scroll_area, print_preview)
 
-    options = OptionsWidget(
-        image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
-    )
+    options = OptionsWidget(application, print_dict, img_dict)
 
     window = MainWindow(tabs, scroll_area, options, print_preview)
+    application.set_window(window)
+
     window.show()
     return window
 
 
-def event_loop(
-    app, window, image_dir, crop_dir, print_json, print_dict, img_dict, img_cache
-):
-    app.exec()
+def event_loop(application):
+    application.exec()

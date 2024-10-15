@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 
+import constants
 
 def list_files(folder, extensions=None):
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
@@ -60,6 +61,7 @@ def cap_offset_str(offset):
 
 def open_folder(path):
     if os.path.isdir(path):
+        path = path if isinstance(path, str) else f"{path}"
         if sys.platform == "darwin":
             subprocess.call(["open", "--", path])
         elif sys.platform.startswith("linux"):
@@ -71,6 +73,13 @@ def open_folder(path):
 def open_file(path):
     subprocess.Popen([path], shell=True)
 
+
+def resource_path():
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        return sys._MEIPASS
+    except Exception:
+        return constants.cwd
 
 def is_debugger_attached():
     gettrace = getattr(sys, "gettrace", None)
