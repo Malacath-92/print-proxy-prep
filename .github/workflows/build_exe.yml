@@ -39,7 +39,7 @@ jobs:
 
       - name: Get version
         id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+        run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Extract Release Notes
@@ -57,7 +57,7 @@ jobs:
       - name: Zip Release
         run: |
           cd dist/release
-          tar -a -c -f ../print_proxy_prep_${{ steps.get_version.outputs.VERSION }}.zip *
+          tar -a -c -f ../../print_proxy_prep_${{ steps.get_version.outputs.VERSION }}.zip *
 
       - name: Create Release
         id: create_release
