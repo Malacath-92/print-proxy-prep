@@ -8,7 +8,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2024-15-10
 
-<img src="https://img.shields.io/badge/Spelunky 2-1.19.8c-orange">
-
 ### Added
 - Initial release, see README.md for features
