@@ -1,4 +1,6 @@
+import os
 import sys
+import shutil
 import argparse
 import subprocess
 from pathlib import Path
@@ -8,6 +10,7 @@ from util import open_folder
 
 BASE_DIR = Path(__file__).parent.resolve()
 DIST_DIR = BASE_DIR / "dist"
+RELEASE_DIR = DIST_DIR / "release"
 
 EXE_NAME = Path("print-proxy-prep.exe")
 
@@ -18,12 +21,12 @@ def run_nuitka(debug, package):
         "-m",
         "nuitka",
         f"{BASE_DIR / 'main.py'}",
-        "--standalone",
         "--enable-plugin=pyqt6",
         "--output-filename=print-proxy-prep",
         "--output-dir=dist",
         f"--windows-icon-from-ico={BASE_DIR / 'proxy.png'}",
         "--noinclude-unittest-mode=allow",
+        "--noinclude-setuptools-mode=allow",
     ]
 
     if not debug:
@@ -33,9 +36,10 @@ def run_nuitka(debug, package):
 
     if package:
         nuitka_args.extend(["--onefile", "--standalone"])
+    else:
+        nuitka_args.extend(["--follow-imports"])
 
     subprocess.check_call(nuitka_args)
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -53,8 +57,18 @@ def main():
 
     run_nuitka(args.debug, args.package)
 
-    print(f"exe successfully built at {DIST_DIR / EXE_NAME}")
-    open_folder(DIST_DIR)
+    if args.package:
+        os.makedirs(RELEASE_DIR)
+        shutil.copy(BASE_DIR / "proxy.png", RELEASE_DIR)
+        shutil.copy(BASE_DIR / "vibrance.CUBE", RELEASE_DIR)
+        shutil.copy(DIST_DIR / EXE_NAME, RELEASE_DIR)
+
+        out_dir = RELEASE_DIR
+    else:
+        out_dir = DIST_DIR
+
+    print(f"exe successfully built at {out_dir / EXE_NAME}")
+    open_folder(out_dir)
 
 
 if __name__ == "__main__":

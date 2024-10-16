@@ -25,8 +25,16 @@ jobs:
           pip install -r requirements.txt -r requirements_dev.txt
 
       - name: Build exe
-        run: |
-          python build_exe.py --package
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          nuitka-version: main
+          script-name: main.py
+          onefile: true
+          standalone: true
+          enable-plugins: pyqt6
+          output-dir: dist
+          output-file: print-proxy-prep.exe
+          windows-icon-from-ico: proxy.png
 
       - name: Get version
         id: get_version
