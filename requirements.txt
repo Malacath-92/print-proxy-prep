@@ -1,5 +1,5 @@
 PyQt6
 reportlab
-opencv-python
+pyvips
+pyvips-binary
 numpy==1.22.0
-pyinstaller==5.*

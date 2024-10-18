@@ -41,6 +41,7 @@ def run_nuitka(debug, package):
 
     subprocess.check_call(nuitka_args)
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Build print-proxy-prep.exe, run from project root"

@@ -1236,7 +1236,9 @@ class ActionsWidget(QGroupBox):
                     print(e)
 
             self.window().setEnabled(False)
-            render_window = popup(self.window(), "Rendering PDF...", application._debug_mode)
+            render_window = popup(
+                self.window(), "Rendering PDF...", application._debug_mode
+            )
             render_window.show_during_work(render_work)
             del render_window
             self.window().setEnabled(True)
@@ -1279,7 +1281,9 @@ class ActionsWidget(QGroupBox):
                         del print_dict["cards"][img]
 
                 self.window().setEnabled(False)
-                crop_window = popup(self.window(), "Cropping images...", application._debug_mode)
+                crop_window = popup(
+                    self.window(), "Cropping images...", application._debug_mode
+                )
                 crop_window.show_during_work(cropper_work)
                 del crop_window
                 if self._rebuild_after_cropper:
@@ -1314,7 +1318,9 @@ class ActionsWidget(QGroupBox):
                     )
 
                 self.window().setEnabled(False)
-                reload_window = popup(self.window(), "Reloading project...", application._debug_mode)
+                reload_window = popup(
+                    self.window(), "Reloading project...", application._debug_mode
+                )
                 reload_window.show_during_work(load_project)
                 del reload_window
                 self.window().refresh_widgets(print_dict)
@@ -1345,7 +1351,9 @@ class ActionsWidget(QGroupBox):
                         )
 
                     self.window().setEnabled(False)
-                    reload_window = popup(self.window(), "Reloading project...", application._debug_mode)
+                    reload_window = popup(
+                        self.window(), "Reloading project...", application._debug_mode
+                    )
                     reload_window.show_during_work(reload_work)
                     del reload_window
                     self.window().refresh(print_dict, img_dict)

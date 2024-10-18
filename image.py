@@ -1,11 +1,11 @@
 import io
-import cv2
 import json
-import numpy
 import base64
 from enum import Enum
 
-from PIL import Image, ImageFilter
+from PIL import Image as PIL_Image
+from PIL import ImageFilter as PIL_ImageFilter
+import pyvips
 
 from util import *
 from constants import *
@@ -33,7 +33,7 @@ def init():
     lut_table = [row2val(row) for row in lut_raw]
 
     global vibrance_cube
-    vibrance_cube = ImageFilter.Color3DLUT(lsize, lut_table)
+    vibrance_cube = PIL_ImageFilter.Color3DLUT(lsize, lut_table)
 
 
 def init_image_folder(image_dir, crop_dir):
@@ -48,29 +48,23 @@ class Rotation(Enum):
     Rotate_180 = (2,)
 
 
-def rotate_image(img, rotation):
+def rotate_image(img: pyvips.Image, rotation) -> pyvips.Image:
     match rotation:
         case Rotation.RotateClockwise_90:
-            rotation = cv2.ROTATE_90_CLOCKWISE
+            rotation = img.rot90
         case Rotation.RotateCounterClockwise_90:
-            rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
+            rotation = img.rot270
         case Rotation.Rotate_180:
-            rotation = cv2.ROTATE_180
-    return cv2.rotate(img, rotation)
+            rotation = img.rot180
+    return rotation()
 
 
-def read_image(path):
-    with open(path, "rb") as f:
-        bytes = bytearray(f.read())
-        numpyarray = numpy.asarray(bytes, dtype=numpy.uint8)
-        image = cv2.imdecode(numpyarray, cv2.IMREAD_UNCHANGED)
-        return image
+def read_image(path) -> pyvips.Image:
+    return pyvips.Image.new_from_file(path)
 
 
-def write_image(path, image):
-    with open(path, "wb") as f:
-        _, bytes = cv2.imencode(".png", image)
-        bytes.tofile(f)
+def write_image(path, image: pyvips.Image):
+    image.write_to_file(path)
 
 
 def need_run_cropper(image_dir, crop_dir, bleed_edge, do_vibrance_bump):
@@ -90,10 +84,12 @@ def need_run_cropper(image_dir, crop_dir, bleed_edge, do_vibrance_bump):
     return sorted(input_files) != sorted(output_files)
 
 
-def crop_image(image, image_name, bleed_edge, max_dpi, print_fn=None):
+def crop_image(
+    image: pyvips.Image, image_name, bleed_edge, max_dpi, print_fn=None
+) -> pyvips.Image:
     print_fn = print_fn if print_fn is not None else lambda *args: args
 
-    (h, w, _) = image.shape
+    w, h = image.width, image.height
     (bw, bh) = card_size_with_bleed_inch
     dpi = min(w / bw, h / bh)
     c = round(0.12 * dpi)
@@ -108,29 +104,25 @@ def crop_image(image, image_name, bleed_edge, max_dpi, print_fn=None):
         print_fn(
             f"Cropping images...\n{image_name} - DPI calculated: {dpi}, cropping {c} pixels around frame"
         )
-    cropped_image = image[c : h - c, c : w - c]
-    (h, w, _) = cropped_image.shape
+    cropped_image: pyvips.Image = image.crop(c, c, w - c * 2, h - c * 2)
+    w, h = image.width, image.height
     if max_dpi is not None and dpi > max_dpi:
-        new_size = (
-            int(round(w * max_dpi / dpi)),
-            int(round(h * max_dpi / dpi)),
-        )
+        new_w = int(round(w * max_dpi / dpi))
+        new_h = int(round(h * max_dpi / dpi))
+
         print_fn(
-            f"Cropping images...\n{image_name} - Exceeds maximum DPI {max_dpi}, resizing to {new_size[0]}x{new_size[1]}"
+            f"Cropping images...\n{image_name} - Exceeds maximum DPI {max_dpi}, resizing to {new_w}x{new_h}"
         )
-        cropped_image = cv2.resize(
-            cropped_image, new_size, interpolation=cv2.INTER_CUBIC
-        )
-        cropped_image = numpy.array(
-            Image.fromarray(cropped_image).filter(ImageFilter.UnsharpMask(1, 20, 8))
-        )
+
+        scale = max_dpi / dpi
+        cropped_image = cropped_image.resize(scale, kernel=pyvips.enums.Kernel.CUBIC)
     return cropped_image
 
 
-def uncrop_image(image, image_name, print_fn=None):
+def uncrop_image(image: pyvips.Image, image_name, print_fn=None) -> pyvips.Image:
     print_fn = print_fn if print_fn is not None else lambda *args: args
 
-    (h, w, _) = image.shape
+    w, h = image.width, image.height
     (bw, bh) = card_size_without_bleed_inch
     dpi = min(w / bw, h / bh)
     c = round(dpi * 0.12)
@@ -138,7 +130,8 @@ def uncrop_image(image, image_name, print_fn=None):
         f"Reinserting bleed edge...\n{image_name} - DPI calculated: {dpi}, adding {c} pixels around frame"
     )
 
-    return cv2.copyMakeBorder(image, c, c, c, c, cv2.BORDER_CONSTANT, value=0xFFFFFFFF)
+    uncropped_image = pyvips.Image.black(w + c * 2, h + c * 2)
+    return uncropped_image.insert(image, c, c)
 
 
 def cropper(
@@ -194,8 +187,8 @@ def cropper(
         image = read_image(os.path.join(image_dir, img_file))
         cropped_image = crop_image(image, img_file, bleed_edge, max_dpi, print_fn)
         if do_vibrance_bump:
-            cropped_image = numpy.array(
-                Image.fromarray(cropped_image).filter(vibrance_cube)
+            cropped_image = pyvips.Image.new_from_array(
+                PIL_Image.fromarray(cropped_image.numpy()).filter(vibrance_cube)
             )
         write_image(os.path.join(output_dir, img_file), cropped_image)
 
@@ -219,44 +212,46 @@ def cropper(
         cache_previews(img_cache, image_dir, crop_dir, print_fn, img_dict)
 
 
-def image_from_bytes(bytes):
+def image_from_bytes(bytes) -> pyvips.Image:
+    img: pyvips.Image = None
     try:
         dataBytesIO = io.BytesIO(base64.b64decode(bytes))
-        buffer = dataBytesIO.getbuffer()
-        img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
+        buffer = dataBytesIO.getvalue()
+        img = pyvips.Image.new_from_buffer(buffer, options="")
     except Exception as e:
         pass
+
     if img is None:
         dataBytesIO = io.BytesIO(bytes)
-        buffer = dataBytesIO.getbuffer()
-        img = cv2.imdecode(numpy.frombuffer(buffer, numpy.uint8), -1)
+        buffer = dataBytesIO.getvalue()
+        img = pyvips.Image.new_from_buffer(buffer, options="")
+
     return img
 
 
-def image_to_bytes(img):
-    _, buffer = cv2.imencode(".png", img)
+def image_to_bytes(img: pyvips.Image):
+    buffer = img.write_to_buffer(".png")
     bio = io.BytesIO(buffer)
     return bio.getvalue()
 
 
 def to_bytes(file_or_bytes, resize=None):
-    if isinstance(file_or_bytes, numpy.ndarray):
+    if isinstance(file_or_bytes, pyvips.Image):
         img = file_or_bytes
     elif isinstance(file_or_bytes, str):
         img = read_image(file_or_bytes)
     else:
         img = image_from_bytes(file_or_bytes)
 
-    (cur_height, cur_width, _) = img.shape
+    cur_width, cur_height = img.width, img.height
     if resize:
         new_width, new_height = resize
-        scale = min(new_height / cur_height, new_width / cur_width)
-        img = cv2.resize(
-            img,
-            (int(cur_width * scale), int(cur_height * scale)),
-            interpolation=cv2.INTER_AREA,
+        scale = new_width / cur_width
+        img = img.resize(
+            scale,
+            kernel=pyvips.enums.Kernel.NEAREST,
         )
-        cur_height, cur_width = new_height, new_width
+        cur_width, cur_height = new_width, new_height
     return image_to_bytes(img), (cur_width, cur_height)
 
 
@@ -299,7 +294,7 @@ def cache_previews(file, image_dir, crop_dir, print_fn, data):
 
         if need_img:
             img = read_image(os.path.join(crop_dir, f))
-            (h, w, _) = img.shape
+            w, h = img.width, img.height
             scale = 248 / w
             preview_size = (round(w * scale), round(h * scale))
 
@@ -330,7 +325,7 @@ def cache_previews(file, image_dir, crop_dir, print_fn, data):
             has_img = "uncropped" in img_dict
             if not has_img:
                 img = read_image(os.path.join(image_dir, f))
-                (h, w, _) = img.shape
+                w, h = img.width, img.height
                 scale = 186 / w
                 uncropped_size = (round(w * scale), round(h * scale))
 
