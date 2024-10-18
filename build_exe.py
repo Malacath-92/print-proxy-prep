@@ -58,7 +58,7 @@ def main():
     run_nuitka(args.debug, args.package)
 
     if args.package:
-        os.makedirs(RELEASE_DIR)
+        os.makedirs(RELEASE_DIR, exist_ok=True)
         shutil.copy(BASE_DIR / "proxy.png", RELEASE_DIR)
         shutil.copy(BASE_DIR / "vibrance.CUBE", RELEASE_DIR)
         shutil.copy(DIST_DIR / EXE_NAME, RELEASE_DIR)
