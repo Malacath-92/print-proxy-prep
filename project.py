@@ -45,18 +45,22 @@ def init_dict(print_dict, img_dict):
     crop_dir = os.path.join(image_dir, "crop")
     image.init_image_folder(image_dir, crop_dir)
 
-    # Get all image files in the crop directory
-    crop_list = image.list_image_files(crop_dir)
+    # Get all image files in the crop and/or images directory
+    images = image.list_image_files(image_dir)
+    if CFG.EnableUncrop:
+        crop_images = image.list_image_files(image_dir)
+        crop_images = [img for img in crop_images if img not in images]
+        images.extend(crop_images)
 
     # Check that we have all our cards accounted for
-    for img in crop_list:
+    for img in images:
         if img not in print_dict["cards"].keys():
             print_dict["cards"][img] = 0 if img.startswith("__") else 1
 
     # And also check we don't have stale cards in here
     stale_images = []
     for img in print_dict["cards"].keys():
-        if img not in crop_list:
+        if img not in images:
             stale_images.append(img)
     for img in stale_images:
         del print_dict["cards"][img]
@@ -75,12 +79,12 @@ def init_dict(print_dict, img_dict):
     print_dict["bleed_edge"] = bleed_edge
 
     # Initialize the image amount
-    for img in crop_list:
+    for img in images:
         if img not in print_dict["cards"].keys():
             print_dict["cards"][img] = 1
 
     # Deselect images starting with __
-    for img in crop_list:
+    for img in images:
         print_dict["cards"][img] = (
             0 if img.startswith("__") else print_dict["cards"][img]
         )
