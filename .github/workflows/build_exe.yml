@@ -30,8 +30,6 @@ jobs:
         with:
           nuitka-version: main
           script-name: main.py
-          onefile: true
-          standalone: true
           enable-plugins: pyqt6
           output-dir: dist
           output-file: print-proxy-prep.exe
