@@ -45,7 +45,7 @@ def draw_cross(can, x, y, segment, c=6, s=1):
 
 def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     has_backside = print_dict["backside_enabled"]
-    backside_offset = 0
+    backside_offset = mm_to_point(float(print_dict["backside_offset"]))
 
     bleed_edge = float(print_dict["bleed_edge"])
     has_bleed_edge = bleed_edge > 0
