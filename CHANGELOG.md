@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2024-13-12
+
+### Fixed
+- Fix backside offset not correctly offset backside in pdf
+
 ## [1.1.0] - 2024-18-10
 
 ### Changed
