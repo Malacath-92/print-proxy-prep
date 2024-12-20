@@ -19,28 +19,28 @@ class CrossSegment(Enum):
     BottomLeft = (1, 1)
 
 
-def draw_line(can, fx, fy, tx, ty, s=1):
+def draw_line(can, c1, c2, fx, fy, tx, ty, s=1):
     dash = [s, s]
     can.setLineWidth(s)
 
     # First layer
     can.setDash(dash)
-    can.setStrokeColorRGB(0.75, 0.75, 0.75)
+    can.setStrokeColorRGB(*c1)
     can.line(fx, fy, tx, ty)
 
     # Second layer with phase offset
     can.setDash(dash, s)
-    can.setStrokeColorRGB(0, 0, 0)
+    can.setStrokeColorRGB(*c2)
     can.line(fx, fy, tx, ty)
 
 
 # Draws black-white dashed cross segment at `(x, y)`, with a width of `c`, and a thickness of `s`
-def draw_cross(can, x, y, segment, c=6, s=1):
+def draw_cross(can, c1, c2, x, y, segment, c=6, s=1):
     (dx, dy) = segment.value
     (tx, ty) = (x + c * dx, y + c * dy)
 
-    draw_line(can, x, y, tx, y, s)
-    draw_line(can, x, y, x, ty, s)
+    draw_line(can, c1, c2, x, y, tx, y, s)
+    draw_line(can, c1, c2, x, y, x, ty, s)
 
 
 def generate(print_dict, crop_dir, size, pdf_path, print_fn):
@@ -49,6 +49,16 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
 
     bleed_edge = float(print_dict["bleed_edge"])
     has_bleed_edge = bleed_edge > 0
+
+    def int_to_rgb(val):
+        return [
+            float((val >> 16) & 0xFF) / 0xFF,
+            float((val >> 8) & 0xFF) / 0xFF,
+            float((val >> 0) & 0xFF) / 0xFF,
+        ]
+
+    c1 = int_to_rgb(print_dict["guide_color_a"])
+    c2 = int_to_rgb(print_dict["guide_color_b"])
 
     b = 0
     img_dir = crop_dir
@@ -114,16 +124,16 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
         def draw_cross_at_grid(ix, iy, segment, dx=0.0, dy=0.0):
             x = rx + ix * w + dx
             y = ry - iy * h + dy
-            draw_cross(pages, x, y, segment)
+            draw_cross(pages, c1, c2, x, y, segment)
             if extended_guides:
                 if ix == 0:
-                    draw_line(pages, x, y, 0, y)
+                    draw_line(pages, c1, c2, x, y, 0, y)
                 if ix == cols:
-                    draw_line(pages, x, y, pw, y)
+                    draw_line(pages, c1, c2, x, y, pw, y)
                 if iy == 0:
-                    draw_line(pages, x, y, x, ph)
+                    draw_line(pages, c1, c2, x, y, x, ph)
                 if iy == rows:
-                    draw_line(pages, x, y, x, 0)
+                    draw_line(pages, c1, c2, x, y, x, 0)
 
         card_grid = distribute_cards_to_grid(page_images, True, cols, rows)
 

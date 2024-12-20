@@ -17,6 +17,7 @@ from PyQt6.QtGui import (
     QCursor,
     QIcon,
     QTransform,
+    QColor,
 )
 from PyQt6.QtWidgets import (
     QApplication,
@@ -43,6 +44,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QTabWidget,
     QFileDialog,
+    QColorDialog,
 )
 
 import pdf
@@ -1392,11 +1394,28 @@ class PrintOptionsWidget(QGroupBox):
         guides_checkbox = QCheckBox("Extended Guides")
         guides_checkbox.setChecked(print_dict["extended_guides"])
 
+        def int_to_qcolor(val):
+            return QColor("#" + f"{val:x}".zfill(6))
+
+        guides_color_a_button = QPushButton()
+        guides_color_a_button.setStyleSheet(
+            f"background-color: {int_to_qcolor(print_dict['guide_color_a']).name()};"
+        )
+        guides_color_a = WidgetWithLabel("Guides Color A", guides_color_a_button)
+
+        guides_color_b_button = QPushButton()
+        guides_color_b_button.setStyleSheet(
+            f"background-color: {int_to_qcolor(print_dict['guide_color_b']).name()};"
+        )
+        guides_color_b = WidgetWithLabel("Guides Color B", guides_color_b_button)
+
         layout = QVBoxLayout()
         layout.addWidget(print_output)
         layout.addWidget(paper_size)
         layout.addWidget(orientation)
         layout.addWidget(guides_checkbox)
+        layout.addWidget(guides_color_a)
+        layout.addWidget(guides_color_b)
 
         self.setLayout(layout)
 
@@ -1415,10 +1434,25 @@ class PrintOptionsWidget(QGroupBox):
             enabled = s == QtCore.Qt.CheckState.Checked
             print_dict["extended_guides"] = enabled
 
+        def pick_color(initial_color):
+            return QColorDialog.getColor(initial=int_to_qcolor(initial_color))
+
+        def pick_guides_color_a():
+            color = pick_color(print_dict["guide_color_a"]).name()
+            print_dict["guide_color_a"] = int(color[1:], base=16)
+            guides_color_a_button.setStyleSheet(f"background-color : {color}")
+
+        def pick_guides_color_b():
+            color = pick_color(print_dict["guide_color_b"]).name()
+            print_dict["guide_color_b"] = int(color[1:], base=16)
+            guides_color_b_button.setStyleSheet(f"background-color : {color}")
+
         print_output._widget.textChanged.connect(change_output)
         paper_size._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
         guides_checkbox.checkStateChanged.connect(change_guides)
+        guides_color_a_button.clicked.connect(pick_guides_color_a)
+        guides_color_b_button.clicked.connect(pick_guides_color_b)
 
         self._print_output = print_output._widget
         self._paper_size = paper_size._widget
