@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2024-20-12
+
+### Added
+- Customizability for guide colors, coming with two color pickers
+
 ## [1.1.1] - 2024-13-12
 
 ### Fixed
