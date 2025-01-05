@@ -1574,7 +1574,7 @@ class CardOptionsWidget(QGroupBox):
             print_dict["backside_enabled"] = enabled
             backside_default_button.setEnabled(enabled)
             backside_default_preview.setEnabled(enabled)
-            backside_offset_spin.setEnabled(enabled)
+            backside_offset.setEnabled(enabled)
             self.window().refresh(print_dict, img_dict)
 
         def pick_backside():
