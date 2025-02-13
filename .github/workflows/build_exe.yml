@@ -29,6 +29,7 @@ jobs:
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
+          clang: true
           script-name: main.py
           enable-plugins: pyqt6
           output-dir: dist
