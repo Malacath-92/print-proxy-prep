@@ -29,6 +29,7 @@ def init_dict(print_dict, img_dict):
         "pagesize": (
             default_page_size if default_page_size in page_sizes else "Letter"
         ),
+        "enable_guides": True,
         "extended_guides": True,
         "guide_color_a": 0xBFBFBF,
         "guide_color_b": 0x000000,

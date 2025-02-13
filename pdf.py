@@ -80,6 +80,7 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
 
     images = distribute_cards_to_pages(print_dict, cols, rows)
 
+    enable_guides = print_dict["enable_guides"]
     extended_guides = print_dict["extended_guides"]
 
     @cache
@@ -149,6 +150,9 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
                         card_name, is_oversized, i, x, y, is_short_edge=is_short_edge
                     )
                     i = i + 1
+
+                    if not enable_guides:
+                        continue
 
                     if is_oversized:
                         ob = 2 * b

@@ -1391,8 +1391,13 @@ class PrintOptionsWidget(QGroupBox):
         orientation = ComboBoxWithLabel(
             "&Orientation", ["Landscape", "Portrait"], print_dict["orient"]
         )
-        guides_checkbox = QCheckBox("Extended Guides")
-        guides_checkbox.setChecked(print_dict["extended_guides"])
+
+        guides_checkbox = QCheckBox("Enable Guides")
+        guides_checkbox.setChecked(print_dict["enable_guides"])
+
+        extended_guides_checkbox = QCheckBox("Extended Guides")
+        extended_guides_checkbox.setChecked(print_dict["extended_guides"])
+        extended_guides_checkbox.setEnabled(print_dict["enable_guides"])
 
         def int_to_qcolor(val):
             return QColor("#" + f"{val:x}".zfill(6))
@@ -1402,18 +1407,21 @@ class PrintOptionsWidget(QGroupBox):
             f"background-color: {int_to_qcolor(print_dict['guide_color_a']).name()};"
         )
         guides_color_a = WidgetWithLabel("Guides Color A", guides_color_a_button)
+        guides_color_a.setEnabled(print_dict["enable_guides"])
 
         guides_color_b_button = QPushButton()
         guides_color_b_button.setStyleSheet(
             f"background-color: {int_to_qcolor(print_dict['guide_color_b']).name()};"
         )
         guides_color_b = WidgetWithLabel("Guides Color B", guides_color_b_button)
+        guides_color_b.setEnabled(print_dict["enable_guides"])
 
         layout = QVBoxLayout()
         layout.addWidget(print_output)
         layout.addWidget(paper_size)
         layout.addWidget(orientation)
         layout.addWidget(guides_checkbox)
+        layout.addWidget(extended_guides_checkbox)
         layout.addWidget(guides_color_a)
         layout.addWidget(guides_color_b)
 
@@ -1431,6 +1439,13 @@ class PrintOptionsWidget(QGroupBox):
             self.window().refresh_preview(print_dict, img_dict)
 
         def change_guides(s):
+            enabled = s == QtCore.Qt.CheckState.Checked
+            print_dict["enable_guides"] = enabled
+            self._extended_guides_checkbox.setEnabled(enabled)
+            self._guides_color_a.setEnabled(enabled)
+            self._guides_color_b.setEnabled(enabled)
+
+        def change_extended_guides(s):
             enabled = s == QtCore.Qt.CheckState.Checked
             print_dict["extended_guides"] = enabled
 
@@ -1451,6 +1466,7 @@ class PrintOptionsWidget(QGroupBox):
         paper_size._widget.currentTextChanged.connect(change_papersize)
         orientation._widget.currentTextChanged.connect(change_orientation)
         guides_checkbox.checkStateChanged.connect(change_guides)
+        extended_guides_checkbox.checkStateChanged.connect(change_extended_guides)
         guides_color_a_button.clicked.connect(pick_guides_color_a)
         guides_color_b_button.clicked.connect(pick_guides_color_b)
 
@@ -1458,12 +1474,20 @@ class PrintOptionsWidget(QGroupBox):
         self._paper_size = paper_size._widget
         self._orientation = orientation._widget
         self._guides_checkbox = guides_checkbox
+        self._extended_guides_checkbox = extended_guides_checkbox
+        self._guides_color_a = guides_color_a
+        self._guides_color_b = guides_color_b
 
     def refresh_widgets(self, print_dict):
         self._print_output.setText(print_dict["filename"])
         self._paper_size.setCurrentText(print_dict["pagesize"])
         self._orientation.setCurrentText(print_dict["orient"])
-        self._guides_checkbox.setChecked(print_dict["extended_guides"])
+        self._guides_checkbox.setChecked(print_dict["enable_guides"])
+        self._extended_guides_checkbox.setChecked(print_dict["extended_guides"])
+
+        self._extended_guides_checkbox.setEnabled(print_dict["enable_guides"])
+        self._guides_color_a.setEnabled(print_dict["enable_guides"])
+        self._guides_color_b.setEnabled(print_dict["enable_guides"])
 
 
 class BacksidePreview(QWidget):
