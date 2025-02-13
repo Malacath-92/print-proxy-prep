@@ -1,5 +1,5 @@
 PyQt6
-reportlab
+PyMuPDF
 pyvips
 pyvips-binary
 numpy==1.22.0

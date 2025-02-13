@@ -3,8 +3,7 @@ from enum import Enum
 from copy import deepcopy
 from functools import cache
 
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
+import pymupdf
 
 from util import *
 from config import CFG
@@ -13,34 +12,26 @@ from image import read_image, image_to_bytes, rotate_image, Rotation
 
 
 class CrossSegment(Enum):
-    TopLeft = (1, -1)
-    TopRight = (-1, -1)
-    BottomRight = (-1, 1)
-    BottomLeft = (1, 1)
+    TopLeft = (1, 1)
+    TopRight = (-1, 1)
+    BottomRight = (-1, -1)
+    BottomLeft = (1, -1)
 
 
-def draw_line(can, c1, c2, fx, fy, tx, ty, s=1):
-    dash = [s, s]
-    can.setLineWidth(s)
-
+def draw_line(page, c1, c2, fx, fy, tx, ty, s=1):
     # First layer
-    can.setDash(dash)
-    can.setStrokeColorRGB(*c1)
-    can.line(fx, fy, tx, ty)
-
+    page.draw_line([fx, fy], [tx, ty], dashes=f"[{s}] 0", color=c1, width=s)
     # Second layer with phase offset
-    can.setDash(dash, s)
-    can.setStrokeColorRGB(*c2)
-    can.line(fx, fy, tx, ty)
+    page.draw_line([fx, fy], [tx, ty], dashes=f"[{s}] {s}", color=c2, width=s)
 
 
 # Draws black-white dashed cross segment at `(x, y)`, with a width of `c`, and a thickness of `s`
-def draw_cross(can, c1, c2, x, y, segment, c=6, s=1):
+def draw_cross(page, c1, c2, x, y, segment, c=6, s=1):
     (dx, dy) = segment.value
     (tx, ty) = (x + c * dx, y + c * dy)
 
-    draw_line(can, c1, c2, x, y, tx, y, s)
-    draw_line(can, c1, c2, x, y, x, ty, s)
+    draw_line(page, c1, c2, x, y, tx, y, s)
+    draw_line(page, c1, c2, x, y, x, ty, s)
 
 
 def generate(print_dict, crop_dir, size, pdf_path, print_fn):
@@ -73,10 +64,10 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
     rotate = bool(print_dict["orient"] == "Landscape")
     size = tuple(size[::-1]) if rotate else size
     pw, ph = size
-    pages = canvas.Canvas(pdf_path, pagesize=size)
     cols, rows = int(pw // w), int(ph // h)
     rx, ry = round((pw - (w * cols)) / 2), round((ph - (h * rows)) / 2)
-    ry = ph - ry
+
+    pdf_document = pymupdf.open()
 
     images = distribute_cards_to_pages(print_dict, cols, rows)
 
@@ -85,17 +76,15 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
 
     @cache
     def get_img(img_path, rotation):
-        if rotation is None:
-            return img_path
-
         img = read_image(img_path)
         img = rotate_image(img, rotation)
         img = image_to_bytes(img)
-        img = ImageReader(io.BytesIO(img))
-        return img
+        return pymupdf.Pixmap(io.BytesIO(img))
 
     for p, page_images in enumerate(images):
         render_fmt = "Rendering page {page}...\nImage number {img_idx} - {img_name}"
+
+        page = pdf_document.new_page(width=pw, height=ph)
 
         def draw_image(
             img, oversized, i, x, y, dx=0.0, dy=0.0, is_short_edge=False, backside=False
@@ -110,31 +99,26 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
                 img = get_img(img_path, rotation)
 
                 x = rx + x * w + dx
-                y = ry - y * h + dy - h
+                y = ry + y * h + dy
                 cw = cw = 2 * w if oversized else w
                 ch = h
 
-                pages.drawImage(
-                    img,
-                    x,
-                    y,
-                    cw,
-                    ch,
-                )
+                img_rect = pymupdf.Rect(x, y, x + cw, y + ch)
+                page.insert_image(img_rect, pixmap=img)
 
         def draw_cross_at_grid(ix, iy, segment, dx=0.0, dy=0.0):
             x = rx + ix * w + dx
-            y = ry - iy * h + dy
-            draw_cross(pages, c1, c2, x, y, segment)
+            y = ry + iy * h + dy
+            draw_cross(page, c1, c2, x, y, segment)
             if extended_guides:
                 if ix == 0:
-                    draw_line(pages, c1, c2, x, y, 0, y)
+                    draw_line(page, c1, c2, x, y, 0, y)
                 if ix == cols:
-                    draw_line(pages, c1, c2, x, y, pw, y)
+                    draw_line(page, c1, c2, x, y, pw, y)
                 if iy == 0:
-                    draw_line(pages, c1, c2, x, y, x, ph)
+                    draw_line(page, c1, c2, x, y, x, 0)
                 if iy == rows:
-                    draw_line(pages, c1, c2, x, y, x, 0)
+                    draw_line(page, c1, c2, x, y, x, ph)
 
         card_grid = distribute_cards_to_grid(page_images, True, cols, rows)
 
@@ -157,29 +141,29 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
                     if is_oversized:
                         ob = 2 * b
                         draw_cross_at_grid(
-                            x + 2, y + 0, CrossSegment.TopRight, -ob, -ob
+                            x + 2, y + 0, CrossSegment.TopRight, -ob, +ob
                         )
                         draw_cross_at_grid(
-                            x + 2, y + 1, CrossSegment.BottomRight, -ob, +ob
+                            x + 2, y + 1, CrossSegment.BottomRight, -ob, -ob
                         )
                     else:
                         ob = b
                         draw_cross_at_grid(
-                            x + 1, y + 0, CrossSegment.TopRight, -ob, -ob
+                            x + 1, y + 0, CrossSegment.TopRight, -ob, +ob
                         )
                         draw_cross_at_grid(
-                            x + 1, y + 1, CrossSegment.BottomRight, -ob, +ob
+                            x + 1, y + 1, CrossSegment.BottomRight, -ob, -ob
                         )
 
-                    draw_cross_at_grid(x, y + 0, CrossSegment.TopLeft, +ob, -ob)
-                    draw_cross_at_grid(x, y + 1, CrossSegment.BottomLeft, +ob, +ob)
-
-        # Next page
-        pages.showPage()
+                    draw_cross_at_grid(x, y + 0, CrossSegment.TopLeft, +ob, +ob)
+                    draw_cross_at_grid(x, y + 1, CrossSegment.BottomLeft, +ob, -ob)
 
         # Draw back-sides if requested
         if has_backside:
             render_fmt = "Rendering backside for page {page}...\nImage number {img_idx} - {img_name}"
+
+            page = pdf_document.new_page(width=pw, height=ph)
+
             i = 0
             for y in range(0, rows):
                 for x in range(0, cols):
@@ -209,10 +193,9 @@ def generate(print_dict, crop_dir, size, pdf_path, print_fn):
                             backside=True,
                         )
 
-            # Next page
-            pages.showPage()
-
-    return pages
+    print_fn("Saving PDF...")
+    pdf_document.save(pdf_path)
+    pdf_document.close()
 
 
 def distribute_cards_to_pages(print_dict, columns, rows):

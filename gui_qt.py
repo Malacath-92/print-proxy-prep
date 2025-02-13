@@ -1223,15 +1223,13 @@ class ActionsWidget(QGroupBox):
                         else "_printme.pdf"
                     ),
                 )
-                pages = pdf.generate(
+                pdf.generate(
                     print_dict,
                     crop_dir,
                     page_sizes[print_dict["pagesize"]],
                     pdf_path,
                     make_popup_print_fn(render_window),
                 )
-                make_popup_print_fn(render_window)("Saving PDF...")
-                pages.save()
                 try:
                     subprocess.Popen([pdf_path], shell=True)
                 except Exception as e:

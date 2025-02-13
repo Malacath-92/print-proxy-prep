@@ -49,6 +49,9 @@ class Rotation(Enum):
 
 
 def rotate_image(img: pyvips.Image, rotation) -> pyvips.Image:
+    if rotation is None:
+        return img
+
     match rotation:
         case Rotation.RotateClockwise_90:
             rotation = img.rot90
