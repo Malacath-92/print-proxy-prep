@@ -1,3 +1,6 @@
+> [!CAUTION]
+> This project is not maintained anymore. Please refer to this project instead: https://github.com/Malacath-92/Proxy-PDF-Maker
+
 # print-proxy-prep
 Crop bleed edges from proxy images and make PDFs for at-home printing.
 
